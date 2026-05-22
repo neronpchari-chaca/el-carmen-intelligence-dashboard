@@ -6,11 +6,21 @@
   color-scheme: dark;
 }
 
+* {
+  @apply border-zinc-800;
+}
+
 body {
   @apply bg-[#050807] text-zinc-100 antialiased;
+  background-image: radial-gradient(circle at top, rgba(31, 97, 72, 0.2), transparent 45%);
+}
+
+::selection {
+  background: rgba(52, 211, 153, 0.3);
+  color: #ecfdf5;
 }
 
 .glass {
-  background: linear-gradient(145deg, rgba(20,30,25,0.85), rgba(10,12,11,0.88));
+  background: linear-gradient(145deg, rgba(20, 30, 25, 0.85), rgba(10, 12, 11, 0.88));
   border: 1px solid rgba(97, 168, 135, 0.18);
 }
