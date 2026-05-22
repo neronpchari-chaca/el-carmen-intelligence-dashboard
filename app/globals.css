@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-[#050807] text-zinc-100 antialiased;
+}
+
+.glass {
+  background: linear-gradient(145deg, rgba(20,30,25,0.85), rgba(10,12,11,0.88));
+  border: 1px solid rgba(97, 168, 135, 0.18);
+}
