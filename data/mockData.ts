@@ -1,12 +1,76 @@
-export const kpis = [
-  { label: 'Hectáreas bajo genética', value: '152.400 ha', delta: '+12,7% YoY' },
+export type CountryCode = 'argentina' | 'brasil';
+
+export type NavSection = {
+  title: string;
+  items: { id: string; label: string }[];
+};
+
+export const sidebarSections: NavSection[] = [
+  {
+    title: 'GLOBAL',
+    items: [
+      { id: 'global-dashboard', label: 'Dashboard Global' },
+      { id: 'global-kpis', label: 'KPIs Consolidados' },
+      { id: 'global-alerts', label: 'Alertas Ejecutivas' },
+    ],
+  },
+  {
+    title: 'REGIONES',
+    items: [
+      { id: 'region-argentina', label: 'Argentina' },
+      { id: 'region-brasil', label: 'Brasil' },
+      { id: 'region-compare', label: 'Comparativo AR-BR' },
+    ],
+  },
+  {
+    title: 'FUNCIONES',
+    items: [
+      { id: 'func-genetica', label: 'Genética' },
+      { id: 'func-royalties', label: 'Royalties' },
+      { id: 'func-produccion', label: 'Producción' },
+      { id: 'func-multiplicadores', label: 'Multiplicadores' },
+      { id: 'func-finanzas', label: 'Finanzas' },
+    ],
+  },
+  {
+    title: 'INTELIGENCIA',
+    items: [
+      { id: 'intel-forecast', label: 'Forecast' },
+      { id: 'intel-escenarios', label: 'Escenarios' },
+      { id: 'intel-ia', label: 'IA Analítica' },
+      { id: 'intel-oportunidades', label: 'Oportunidades' },
+    ],
+  },
+  {
+    title: 'DOCUMENTOS',
+    items: [
+      { id: 'docs-main', label: 'Documentos' },
+      { id: 'docs-wp', label: 'WPs Estratégicos' },
+      { id: 'docs-room', label: 'Data Room' },
+    ],
+  },
+];
+
+export const countryKpis: Record<CountryCode, { label: string; value: string; delta: string }[]> = {
+  argentina: [
+    { label: 'Hectáreas bajo genética', value: '132.000 ha', delta: '+9,1% YoY' },
+    { label: 'Captura de royalties', value: '74,2%', delta: '+3,7 pp' },
+    { label: 'Market share', value: '39,8%', delta: '+1,9 pp' },
+    { label: 'Producción semilla', value: '16.400 t', delta: '+5,2% campaña' },
+  ],
+  brasil: [
+    { label: 'Hectáreas bajo genética', value: '101.000 ha', delta: '+16,4% YoY' },
+    { label: 'Captura de royalties', value: '68,4%', delta: '+6,9 pp' },
+    { label: 'Market share', value: '34,7%', delta: '+3,1 pp' },
+    { label: 'Producción semilla', value: '7.900 t', delta: '+7,4% campaña' },
+  ],
+};
+
+export const kpisConsolidated = [
+  { label: 'Hectáreas bajo genética', value: '233.000 ha', delta: '+12,1% YoY' },
   { label: 'Royalties proyectados', value: 'USD 18,4 M', delta: '+9,2% vs plan' },
   { label: 'Toneladas semilla original', value: '24.300 t', delta: '+4,8% campaña' },
-  { label: 'Market share', value: '37,5%', delta: '+2,4 pp' },
-  { label: 'Exportaciones', value: 'USD 46,8 M', delta: '+15,1% YoY' },
-  { label: 'EBITDA estimado', value: 'USD 22,1 M', delta: '+11,6% forecast' },
-  { label: 'Crecimiento Brasil', value: '28,3%', delta: 'CAGR 3 años' },
-  { label: 'Captura de royalties', value: '72,9%', delta: '+6,1 pp' },
+  { label: 'Market share regional', value: '37,5%', delta: '+2,4 pp' },
 ];
 
 export const royaltiesEvolution = [
@@ -25,18 +89,13 @@ export const surfaceComparison = [
   { name: '2026', argentina: 132, brasil: 101 },
 ];
 
-export const pipelineVarietal = [
-  { stage: 'Pre-comercial', value: 9 },
-  { stage: 'Registro', value: 6 },
-  { stage: 'Ensayos avanzados', value: 14 },
-  { stage: 'I+D temprano', value: 21 },
-];
-
-export const incomeDistribution = [
-  { name: 'Licencias', value: 38 },
-  { name: 'Semilla fiscalizada', value: 29 },
-  { name: 'Servicios técnicos', value: 17 },
-  { name: 'Exportación genética', value: 16 },
+export const compareMetrics = [
+  { metric: 'Hectáreas bajo genética', argentina: 132, brasil: 101, unit: 'kha' },
+  { metric: 'Captura de royalties', argentina: 74.2, brasil: 68.4, unit: '%' },
+  { metric: 'Market share', argentina: 39.8, brasil: 34.7, unit: '%' },
+  { metric: 'Crecimiento anual', argentina: 9.1, brasil: 16.4, unit: '%' },
+  { metric: 'Multiplicadores activos', argentina: 47, brasil: 39, unit: 'n°' },
+  { metric: 'Producción de semilla', argentina: 16.4, brasil: 7.9, unit: 'kt' },
 ];
 
 export const projectedGrowth = [
@@ -46,14 +105,10 @@ export const projectedGrowth = [
   { quarter: 'Q2-2027', conservative: 5.2, target: 7.3, upside: 9.8 },
 ];
 
-export const modules = [
-  'Dashboard Ejecutivo',
-  'Genética',
-  'Brasil',
-  'Multiplicadores',
-  'Royalties',
-  'Producción',
-  'Finanzas',
-  'Estrategia',
-  'Documentos',
-];
+export const placeholdersByModule: Record<string, { title: string; description: string }[]> = {
+  default: [
+    { title: 'Capa de datos desacoplada por país', description: 'Estructura lista para conectar datasets separados para Argentina y Brasil sin alterar visualizaciones.' },
+    { title: 'Gobierno de datos', description: 'Definición de permisos, trazabilidad y versionado para entornos de inteligencia operacional enterprise.' },
+    { title: 'Roadmap funcional', description: 'Backlog modular para escalar analítica, workflows y automatización por función.' },
+  ],
+};
