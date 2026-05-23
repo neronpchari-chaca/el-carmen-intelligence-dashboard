@@ -51,6 +51,7 @@ const normalizeRows = (rows: unknown[][]): CashFlowBrasilRow[] =>
   rows.map((row) => row.map((cell): CashFlowBrasilCell => (typeof cell === 'number' || typeof cell === 'string' ? cell : cell == null ? null : String(cell))));
 
 const fallbackTotals = { income: 164000, expense: 90000 };
+const formatMoney = (value: number) => value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DataIngestionPage() {
   const [stage, setStage] = useState<IngestionStage>('received');
@@ -367,6 +368,53 @@ export default function DataIngestionPage() {
               </article>
             </section>
           </section>
+        ) : null}
+
+        {showPreview && parseResult?.balanceChecks.length ? (
+          <article className="glass rounded-2xl p-5 shadow-premium">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Detalle de conciliacion</p>
+                <h2 className="mt-1 text-xl font-semibold text-white">Control mensual de saldos</h2>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-xs ${balanceStatus === 'ok' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>
+                {parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/{parseResult.balanceChecks.length} meses OK
+              </span>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm text-zinc-300">
+                <thead className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Mes</th>
+                    <th className="px-3 py-2 text-right">Saldo anterior</th>
+                    <th className="px-3 py-2 text-right">Neto calculado</th>
+                    <th className="px-3 py-2 text-right">Saldo esperado</th>
+                    <th className="px-3 py-2 text-right">Saldo Excel</th>
+                    <th className="px-3 py-2 text-right">Diferencia</th>
+                    <th className="px-3 py-2 text-left">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parseResult.balanceChecks.map((check) => (
+                    <tr key={check.period} className="border-t border-zinc-800">
+                      <td className="px-3 py-3 font-medium text-zinc-100">{check.period}</td>
+                      <td className="px-3 py-3 text-right">{formatMoney(check.openingBalance)}</td>
+                      <td className="px-3 py-3 text-right text-sky-300">{formatMoney(check.normalizedNet)}</td>
+                      <td className="px-3 py-3 text-right">{formatMoney(check.calculatedClosingBalance)}</td>
+                      <td className="px-3 py-3 text-right">{formatMoney(check.closingBalance)}</td>
+                      <td className={`px-3 py-3 text-right font-semibold ${check.status === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>{formatMoney(check.difference)}</td>
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full border px-2 py-1 text-xs ${check.status === 'ok' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
+                          {check.status === 'ok' ? 'OK' : 'Revisar'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
         ) : null}
 
         <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
