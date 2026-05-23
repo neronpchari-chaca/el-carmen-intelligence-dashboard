@@ -98,6 +98,7 @@ export default function DataIngestionPage() {
   }, [parseResult]);
 
   const balanceStatus = parseResult?.balanceChecks.every((check) => check.status === 'ok') ? 'ok' : parseResult ? 'warning' : 'ok';
+  const balanceObservations = parseResult?.balanceChecks.filter((check) => check.status !== 'ok') ?? [];
   const sourceTotals = parseResult ? normalizedTotals : fallbackTotals;
   const netAmount = normalizedTotals.income - normalizedTotals.expense;
   const allMappingsApproved = approvedCount === profile.mappings.length;
@@ -414,6 +415,44 @@ export default function DataIngestionPage() {
                 </tbody>
               </table>
             </div>
+
+            {balanceObservations.length ? (
+              <div className="mt-5 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-amber-300">Observaciones para resolver</p>
+                <div className="mt-3 grid gap-3">
+                  {balanceObservations.map((check) => {
+                    const noMovementsDetected = Math.abs(check.normalizedNet) <= 0.01 && Math.abs(check.difference) > 0.01;
+                    return (
+                      <div key={check.period} className="rounded-xl border border-amber-500/20 bg-zinc-950/35 p-4 text-sm text-zinc-200">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <p className="font-semibold text-amber-200">{check.period}: diferencia de {formatMoney(check.difference)} BRL</p>
+                          <span className="w-fit rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">Requiere decision</span>
+                        </div>
+                        <p className="mt-3 text-zinc-300">
+                          {noMovementsDetected
+                            ? 'El saldo final cambia, pero no se detectaron movimientos normalizados para explicar esa variacion.'
+                            : 'El saldo final no coincide con el saldo anterior mas el neto calculado por la plataforma.'}
+                        </p>
+                        <div className="mt-3 grid gap-2 md:grid-cols-3">
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-900/55 p-3">
+                            <p className="font-medium text-zinc-100">1. Revisar origen</p>
+                            <p className="mt-1 text-xs text-zinc-400">Confirmar si el Excel tiene movimientos de ese mes o solo saldo proyectado.</p>
+                          </div>
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-900/55 p-3">
+                            <p className="font-medium text-zinc-100">2. Corregir y resubir</p>
+                            <p className="mt-1 text-xs text-zinc-400">Si falta detalle, completar el archivo y cargarlo nuevamente.</p>
+                          </div>
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-900/55 p-3">
+                            <p className="font-medium text-zinc-100">3. Dejar observado</p>
+                            <p className="mt-1 text-xs text-zinc-400">Si el dato es correcto, aprobarlo luego con una nota de control.</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </article>
         ) : null}
 
