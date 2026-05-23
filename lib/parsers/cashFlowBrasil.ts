@@ -52,11 +52,14 @@ type BalanceRowMatch = {
 };
 
 const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
+const MONTH_ABBREVIATIONS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30);
 
 const normalizeText = (value: CashFlowBrasilCell) =>
   String(value ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
 
@@ -80,7 +83,29 @@ const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100)
 const findHeaderIndex = (headers: string[], candidates: string[]) =>
   headers.findIndex((header) => candidates.includes(normalizeText(header)));
 
-const isMonthHeader = (value: CashFlowBrasilCell) => MONTH_PATTERN.test(String(value ?? '').trim());
+const normalizeMonthHeader = (value: CashFlowBrasilCell): string | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 30000 && value < 60000) {
+    const date = new Date(EXCEL_EPOCH_UTC + value * 24 * 60 * 60 * 1000);
+    const month = MONTH_ABBREVIATIONS[date.getUTCMonth()];
+    const year = String(date.getUTCFullYear()).slice(-2);
+    return `${month}-${year}`;
+  }
+
+  const normalized = normalizeText(value)
+    .replace(/\//g, '-')
+    .replace(/\s+/g, '-')
+    .replace('.', '');
+
+  return MONTH_PATTERN.test(normalized) ? normalized : null;
+};
+
+const isMonthHeader = (value: CashFlowBrasilCell) => normalizeMonthHeader(value) !== null;
+
+const isAmountLike = (value: CashFlowBrasilCell) => {
+  if (typeof value === 'number') return Number.isFinite(value);
+  const text = String(value ?? '').trim();
+  return /-?\s*(R\$)?\s*\d[\d.,]*/i.test(text);
+};
 
 const findBalanceRow = (rows: CashFlowBrasilRow[], label: string): BalanceRowMatch | undefined => {
   const target = normalizeText(label);
@@ -120,7 +145,7 @@ export function parseCashFlowBrasil(input: ParseInput): CashFlowBrasilParseResul
   const accountIndex = findHeaderIndex(headers, ['cuenta']);
   const sourceRowIndex = findHeaderIndex(headers, ['fila origen']);
   const monthIndexes = headers
-    .map((header, index) => ({ header: header.trim(), index }))
+    .map((header, index) => ({ header: normalizeMonthHeader(header) ?? header.trim(), index }))
     .filter(({ header }) => MONTH_PATTERN.test(header));
 
   if (typeIndex < 0) warnings.push('No se encontro la columna Tipo.');
@@ -197,8 +222,8 @@ function buildBalanceChecks(
   const netByPeriod = new Map(monthlySummary.map((summary) => [summary.period, summary.net]));
 
   return headerRow.flatMap((cell, index) => {
-    const period = String(cell ?? '').trim();
-    if (!MONTH_PATTERN.test(period)) return [];
+    const period = normalizeMonthHeader(cell);
+    if (!period) return [];
 
     const openingValueIndex = resolveBalanceValueIndex(openingMatch, index);
     const closingValueIndex = resolveBalanceValueIndex(closingMatch, index);
@@ -221,10 +246,10 @@ function buildBalanceChecks(
 }
 
 function resolveBalanceValueIndex(match: BalanceRowMatch, monthIndex: number) {
-  if (typeof match.row[monthIndex] === 'number') return monthIndex;
+  if (isAmountLike(match.row[monthIndex])) return monthIndex;
 
   const nextIndex = monthIndex + 1;
-  if (typeof match.row[nextIndex] === 'number') return nextIndex;
+  if (isAmountLike(match.row[nextIndex])) return nextIndex;
 
   return monthIndex <= match.labelIndex ? monthIndex + 1 : monthIndex;
 }
