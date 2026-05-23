@@ -25,13 +25,22 @@ const stageLabels: Record<IngestionStage, string> = {
   published: 'Publicado',
 };
 
-const validationChecks = [
-  { label: 'Fechas validas', status: 'ok' },
-  { label: 'Importes numericos', status: 'ok' },
-  { label: 'Moneda informada', status: 'warning' },
-  { label: 'Categorias reconocidas', status: 'warning' },
-  { label: 'Totales comparables contra archivo original', status: 'ok' },
+const normalizedRows = [
+  { date: '2026-05-02', account: 'Banco 1', category: 'Cobranza', concept: 'Cobranza cliente X', income: 100000, expense: 0, currency: 'ARS' },
+  { date: '2026-05-06', account: 'Banco 1', category: 'Sueldos', concept: 'Pago sueldos planta', income: 0, expense: 52000, currency: 'ARS' },
+  { date: '2026-05-09', account: 'Banco 2', category: 'Proveedor', concept: 'Pago insumos', income: 0, expense: 38000, currency: 'ARS' },
+  { date: '2026-05-14', account: 'Banco 1', category: 'Cobranza', concept: 'Cobranza distribuidor', income: 64000, expense: 0, currency: 'ARS' },
 ];
+
+const validationChecks = [
+  { label: 'Fechas validas', status: 'ok', detail: '4 de 4 registros con fecha valida.' },
+  { label: 'Importes numericos', status: 'ok', detail: 'Ingresos y egresos reconocidos correctamente.' },
+  { label: 'Moneda informada', status: 'warning', detail: 'El archivo no trae moneda; se aplica ARS por perfil del cliente.' },
+  { label: 'Categorias reconocidas', status: 'warning', detail: '1 categoria requiere confirmacion: Proveedor.' },
+  { label: 'Totales comparables contra archivo original', status: 'ok', detail: 'Diferencia total: 0.' },
+];
+
+const sourceTotals = { income: 164000, expense: 90000 };
 
 export default function DataIngestionPage() {
   const [stage, setStage] = useState<IngestionStage>('received');
@@ -47,7 +56,17 @@ export default function DataIngestionPage() {
     [approvedMappings, profile.mappings],
   );
 
+  const normalizedTotals = useMemo(
+    () => normalizedRows.reduce(
+      (totals, row) => ({ income: totals.income + row.income, expense: totals.expense + row.expense }),
+      { income: 0, expense: 0 },
+    ),
+    [],
+  );
+
+  const netAmount = normalizedTotals.income - normalizedTotals.expense;
   const allMappingsApproved = approvedCount === profile.mappings.length;
+  const showPreview = stage !== 'received' && stage !== 'ai-mapping-suggested';
 
   const simulateAiMapping = () => setStage('ai-mapping-suggested');
   const approveAllMappings = () => {
@@ -194,7 +213,8 @@ export default function DataIngestionPage() {
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {validationChecks.map((check) => (
                   <div key={check.label} className={`rounded-xl border p-3 text-sm ${check.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/25 bg-amber-500/10 text-amber-200'}`}>
-                    {check.label}
+                    <p className="font-medium">{check.label}</p>
+                    <p className="mt-1 text-xs opacity-80">{check.detail}</p>
                   </div>
                 ))}
               </div>
@@ -202,6 +222,80 @@ export default function DataIngestionPage() {
             </article>
           </section>
         </section>
+
+        {showPreview ? (
+          <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+            <article className="glass rounded-2xl p-5 shadow-premium">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Preview normalizado</p>
+                  <h2 className="mt-1 text-xl font-semibold text-white">Datos que entrarian al modelo estandar</h2>
+                </div>
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+                  {normalizedRows.length} registros detectados
+                </span>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm text-zinc-300">
+                  <thead className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Fecha</th>
+                      <th className="px-3 py-2 text-left">Cuenta</th>
+                      <th className="px-3 py-2 text-left">Categoria</th>
+                      <th className="px-3 py-2 text-left">Concepto</th>
+                      <th className="px-3 py-2 text-right">Ingreso</th>
+                      <th className="px-3 py-2 text-right">Egreso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {normalizedRows.map((row) => (
+                      <tr key={`${row.date}-${row.concept}`} className="border-t border-zinc-800">
+                        <td className="px-3 py-3">{row.date}</td>
+                        <td className="px-3 py-3">{row.account}</td>
+                        <td className="px-3 py-3 text-emerald-200">{row.category}</td>
+                        <td className="px-3 py-3">{row.concept}</td>
+                        <td className="px-3 py-3 text-right text-emerald-300">{row.income.toLocaleString('es-AR')}</td>
+                        <td className="px-3 py-3 text-right text-rose-300">{row.expense.toLocaleString('es-AR')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <section className="space-y-6">
+              <article className="glass rounded-2xl p-5 shadow-premium">
+                <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Conciliacion</p>
+                <h2 className="mt-1 text-xl font-semibold text-white">Totales de control</h2>
+                <div className="mt-4 grid gap-3">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+                    <p className="text-xs text-zinc-500">Ingresos archivo / normalizado</p>
+                    <p className="mt-1 text-sm font-semibold text-emerald-300">{sourceTotals.income.toLocaleString('es-AR')} / {normalizedTotals.income.toLocaleString('es-AR')}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+                    <p className="text-xs text-zinc-500">Egresos archivo / normalizado</p>
+                    <p className="mt-1 text-sm font-semibold text-rose-300">{sourceTotals.expense.toLocaleString('es-AR')} / {normalizedTotals.expense.toLocaleString('es-AR')}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+                    <p className="text-xs text-zinc-500">Neto a publicar</p>
+                    <p className="mt-1 text-lg font-semibold text-sky-300">{netAmount.toLocaleString('es-AR')} ARS</p>
+                  </div>
+                </div>
+              </article>
+
+              <article className="glass rounded-2xl p-5 shadow-premium">
+                <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Impacto si se publica</p>
+                <h2 className="mt-1 text-xl font-semibold text-white">Resumen ejecutivo</h2>
+                <ul className="mt-4 space-y-2 text-sm text-zinc-300">
+                  <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">Se actualizaria Cash Flow Mayo 2026.</li>
+                  <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">El neto mensual subiria {netAmount.toLocaleString('es-AR')} ARS.</li>
+                  <li className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-amber-200">Queda pendiente confirmar categoria Proveedor.</li>
+                </ul>
+              </article>
+            </section>
+          </section>
+        ) : null}
       </section>
     </main>
   );
