@@ -403,10 +403,12 @@ export default function DataIngestionPage() {
                   <tr>
                     <th className="px-3 py-2 text-left">Mes</th>
                     <th className="px-3 py-2 text-right">Saldo anterior</th>
-                    <th className="px-3 py-2 text-right">Neto calculado</th>
+                    <th className="px-3 py-2 text-right">Neto app</th>
+                    <th className="px-3 py-2 text-right">Neto Excel</th>
+                    <th className="px-3 py-2 text-right">Dif. neto</th>
                     <th className="px-3 py-2 text-right">Saldo esperado</th>
                     <th className="px-3 py-2 text-right">Saldo Excel</th>
-                    <th className="px-3 py-2 text-right">Diferencia</th>
+                    <th className="px-3 py-2 text-right">Dif. saldo</th>
                     <th className="px-3 py-2 text-left">Estado</th>
                   </tr>
                 </thead>
@@ -416,9 +418,11 @@ export default function DataIngestionPage() {
                       <td className="px-3 py-3 font-medium text-zinc-100">{check.period}</td>
                       <td className="px-3 py-3 text-right">{formatMoney(check.openingBalance)}</td>
                       <td className="px-3 py-3 text-right text-sky-300">{formatMoney(check.normalizedNet)}</td>
+                      <td className="px-3 py-3 text-right">{check.spreadsheetNet === undefined ? '-' : formatMoney(check.spreadsheetNet)}</td>
+                      <td className={`px-3 py-3 text-right font-semibold ${Math.abs(check.netDifference ?? 0) <= 0.01 ? 'text-emerald-300' : 'text-amber-300'}`}>{check.netDifference === undefined ? '-' : formatMoney(check.netDifference)}</td>
                       <td className="px-3 py-3 text-right">{formatMoney(check.calculatedClosingBalance)}</td>
                       <td className="px-3 py-3 text-right">{formatMoney(check.closingBalance)}</td>
-                      <td className={`px-3 py-3 text-right font-semibold ${check.status === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>{formatMoney(check.difference)}</td>
+                      <td className={`px-3 py-3 text-right font-semibold ${Math.abs(check.difference) <= 0.01 ? 'text-emerald-300' : 'text-amber-300'}`}>{formatMoney(check.difference)}</td>
                       <td className="px-3 py-3">
                         <span className={`rounded-full border px-2 py-1 text-xs ${check.status === 'ok' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
                           {check.status === 'ok' ? 'OK' : 'Revisar'}
@@ -435,22 +439,22 @@ export default function DataIngestionPage() {
                 <p className="text-xs uppercase tracking-[0.16em] text-amber-300">Observaciones para resolver</p>
                 <div className="mt-3 grid gap-3">
                   {balanceObservations.map((check) => {
-                    const noMovementsDetected = Math.abs(check.normalizedNet) <= 0.01 && Math.abs(check.difference) > 0.01;
+                    const netMismatch = check.netDifference !== undefined && Math.abs(check.netDifference) > 0.01;
                     return (
                       <div key={check.period} className="rounded-xl border border-amber-500/20 bg-zinc-950/35 p-4 text-sm text-zinc-200">
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                          <p className="font-semibold text-amber-200">{check.period}: diferencia de {formatMoney(check.difference)} BRL</p>
+                          <p className="font-semibold text-amber-200">{check.period}: diferencia de saldo {formatMoney(check.difference)} BRL</p>
                           <span className="w-fit rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">Requiere decision</span>
                         </div>
                         <p className="mt-3 text-zinc-300">
-                          {noMovementsDetected
-                            ? 'El saldo final cambia, pero no se detectaron movimientos normalizados para explicar esa variacion.'
+                          {netMismatch
+                            ? `El neto que entra al modelo es ${formatMoney(check.normalizedNet)} BRL, pero el Excel informa ${formatMoney(check.spreadsheetNet ?? 0)} BRL.`
                             : 'El saldo final no coincide con el saldo anterior mas el neto calculado por la plataforma.'}
                         </p>
                         <div className="mt-3 grid gap-2 md:grid-cols-3">
                           <div className="rounded-lg border border-zinc-800 bg-zinc-900/55 p-3">
-                            <p className="font-medium text-zinc-100">1. Revisar origen</p>
-                            <p className="mt-1 text-xs text-zinc-400">Confirmar si el Excel tiene movimientos de ese mes o solo saldo proyectado.</p>
+                            <p className="font-medium text-zinc-100">1. Revisar movimientos</p>
+                            <p className="mt-1 text-xs text-zinc-400">Buscar si faltan lineas o columnas del mes en Mapa cuentas.</p>
                           </div>
                           <div className="rounded-lg border border-zinc-800 bg-zinc-900/55 p-3">
                             <p className="font-medium text-zinc-100">2. Corregir y resubir</p>
