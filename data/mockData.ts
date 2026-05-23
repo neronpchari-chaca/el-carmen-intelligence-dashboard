@@ -125,12 +125,40 @@ export type DataCenterDataset = {
   name: string;
   description: string;
   requiredFields: string[];
+  supportsProjectedMonths?: number;
+  conversionConfig?: {
+    enabled: boolean;
+    method: 'divide_by_tc_usd';
+    supportedCountries: CountryCode[];
+    preserveFields: ['originalAmount', 'originalCurrency', 'appliedExchangeRate', 'usdAmount'];
+    futureAutomationReady: boolean;
+    sourceMode: 'manual_file_upload';
+  };
   lastUpdated: string;
   status: DataCenterDatasetStatus;
   validationMessage: string;
 };
 
 export const dataCenterDatasets: DataCenterDataset[] = [
+  {
+    id: 'tipos-cambio',
+    name: 'Tipos de Cambio',
+    description:
+      'Tabla mensual de tipos de cambio por país para convertir datasets operativos a USD sin alterar dashboards existentes.',
+    requiredFields: ['Mes', 'País', 'Moneda', 'TC USD', 'Fuente', 'Tipo'],
+    supportsProjectedMonths: 12,
+    conversionConfig: {
+      enabled: true,
+      method: 'divide_by_tc_usd',
+      supportedCountries: ['argentina', 'brasil'],
+      preserveFields: ['originalAmount', 'originalCurrency', 'appliedExchangeRate', 'usdAmount'],
+      futureAutomationReady: true,
+      sourceMode: 'manual_file_upload',
+    },
+    lastUpdated: '21 may 2026, 10:30',
+    status: 'incomplete',
+    validationMessage: 'Pendiente de carga mensual (admite 12 meses proyectados).',
+  },
   {
     id: 'cashflow-brasil',
     name: 'Cash Flow Brasil',
