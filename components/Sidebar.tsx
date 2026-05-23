@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, BrainCircuit, FileStack, Globe2, Network } from 'lucide-react';
+import { BarChart3, BrainCircuit, Database, FileStack, Globe2, Network } from 'lucide-react';
 import { sidebarSections } from '@/data/mockData';
 
 type SidebarProps = {
@@ -13,6 +13,7 @@ const sectionIcons = {
   REGIONES: Network,
   FUNCIONES: BarChart3,
   INTELIGENCIA: BrainCircuit,
+  DATOS: Database,
   DOCUMENTOS: FileStack,
 };
 
