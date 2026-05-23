@@ -99,10 +99,11 @@ export default function DataIngestionPage() {
 
   const balanceStatus = parseResult?.balanceChecks.every((check) => check.status === 'ok') ? 'ok' : parseResult ? 'warning' : 'ok';
   const balanceObservations = parseResult?.balanceChecks.filter((check) => check.status !== 'ok') ?? [];
+  const firstBalanceObservation = balanceObservations[0];
   const sourceTotals = parseResult ? normalizedTotals : fallbackTotals;
   const netAmount = normalizedTotals.income - normalizedTotals.expense;
   const allMappingsApproved = approvedCount === profile.mappings.length;
-  const showPreview = stage !== 'received' && stage !== 'ai-mapping-suggested';
+  const showPreview = Boolean(parseResult) || (stage !== 'received' && stage !== 'ai-mapping-suggested');
 
   const validationChecks = [
     { label: 'Archivo leido', status: parseResult ? 'ok' : readError ? 'warning' : 'ok', detail: parseResult ? 'Se detectaron hojas Mapa cuentas y Hoja1.' : readError ?? 'Modo maqueta con datos de ejemplo.' },
@@ -112,7 +113,9 @@ export default function DataIngestionPage() {
       label: 'Control de saldos',
       status: balanceStatus,
       detail: parseResult
-        ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.${balanceObservations.length ? ` Hay ${balanceObservations.length} mes para revisar: puede faltar detalle de movimientos, ser un saldo proyectado o requerir corregir y volver a subir el Excel.` : ''}`
+        ? firstBalanceObservation
+          ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${firstBalanceObservation.period} no cierra por ${formatMoney(firstBalanceObservation.difference)} BRL. Ver detalle abajo.`
+          : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.`
         : 'No aplica en modo demo.',
     },
     { label: 'Advertencias', status: parseResult?.warnings.length ? 'warning' : 'ok', detail: parseResult?.warnings.length ? parseResult.warnings.join(' ') : 'Sin advertencias criticas.' },
