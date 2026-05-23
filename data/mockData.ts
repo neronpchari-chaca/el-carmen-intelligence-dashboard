@@ -137,6 +137,15 @@ export type DataCenterDataset = {
   lastUpdated: string;
   status: DataCenterDatasetStatus;
   validationMessage: string;
+  dashboardMetrics?: {
+    totalIngresos: number;
+    totalEgresos: number;
+    resultadoNeto: number;
+    resultadoUsd: number;
+    fxDataset: 'Tipos de Cambio';
+    supportedCurrencies: Array<'BRL' | 'ARS' | 'USD'>;
+    multiCountryReady: boolean;
+  };
 };
 
 export const dataCenterDatasets: DataCenterDataset[] = [
@@ -158,6 +167,44 @@ export const dataCenterDatasets: DataCenterDataset[] = [
     lastUpdated: '21 may 2026, 10:30',
     status: 'incomplete',
     validationMessage: 'Pendiente de carga mensual (admite 12 meses proyectados).',
+  },
+  {
+    id: 'cashflow-operativo',
+    name: 'Cash Flow Operativo',
+    description:
+      'Carga mensual estructurada desde Excel para flujo operativo multi-país con consolidación en USD.',
+    requiredFields: [
+      'Fecha',
+      'País',
+      'Moneda',
+      'Centro',
+      'Categoría',
+      'Subcategoría',
+      'Concepto',
+      'Ingreso',
+      'Egreso',
+      'Observaciones',
+    ],
+    conversionConfig: {
+      enabled: true,
+      method: 'divide_by_tc_usd',
+      supportedCountries: ['argentina', 'brasil'],
+      preserveFields: ['originalAmount', 'originalCurrency', 'appliedExchangeRate', 'usdAmount'],
+      futureAutomationReady: true,
+      sourceMode: 'manual_file_upload',
+    },
+    dashboardMetrics: {
+      totalIngresos: 2245000,
+      totalEgresos: 1732000,
+      resultadoNeto: 513000,
+      resultadoUsd: 412300,
+      fxDataset: 'Tipos de Cambio',
+      supportedCurrencies: ['BRL', 'ARS', 'USD'],
+      multiCountryReady: true,
+    },
+    lastUpdated: '22 may 2026, 18:35',
+    status: 'incomplete',
+    validationMessage: 'Pendiente de carga mensual. Validación de campos, fecha y moneda habilitada.',
   },
   {
     id: 'cashflow-brasil',

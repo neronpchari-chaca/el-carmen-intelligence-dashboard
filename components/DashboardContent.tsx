@@ -88,16 +88,19 @@ function DataCenterModule() {
 
         if (lowerName.includes('fecha')) {
           status = 'error';
-          validationMessage = 'Falta columna Fecha';
+          validationMessage = 'Formato de fecha inválido o falta columna Fecha';
         } else if (lowerName.includes('moneda')) {
           status = 'error';
-          validationMessage = 'Moneda inválida';
+          validationMessage = 'Moneda inválida. Permitidas: BRL, ARS, USD';
         } else if (datasetId === 'tipos-cambio' && lowerName.includes('faltatc')) {
           status = 'error';
           validationMessage = 'Falta tipo de cambio para el mes';
         } else if (lowerName.includes('vacio')) {
           status = 'incomplete';
           validationMessage = 'Campo obligatorio vacío';
+        } else if (datasetId === 'cashflow-operativo') {
+          status = 'ok';
+          validationMessage = 'Carga válida. Consolidación USD aplicada usando dataset Tipos de Cambio.';
         }
 
         return {
@@ -179,6 +182,30 @@ function DataCenterModule() {
                 {dataset.conversionConfig?.enabled ? (
                   <div className="text-xs text-zinc-400">
                     Conversión a USD preparada (manual hoy; lista para regla/API futura).
+                  </div>
+                ) : null}
+                {dataset.dashboardMetrics ? (
+                  <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300 md:grid-cols-2">
+                    <div>
+                      <p className="text-zinc-500">Total ingresos</p>
+                      <p className="text-sm font-semibold text-emerald-300">{dataset.dashboardMetrics.totalIngresos.toLocaleString('es-AR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">Total egresos</p>
+                      <p className="text-sm font-semibold text-rose-300">{dataset.dashboardMetrics.totalEgresos.toLocaleString('es-AR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">Resultado neto</p>
+                      <p className="text-sm font-semibold text-sky-300">{dataset.dashboardMetrics.resultadoNeto.toLocaleString('es-AR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">Resultado USD</p>
+                      <p className="text-sm font-semibold text-violet-300">USD {dataset.dashboardMetrics.resultadoUsd.toLocaleString('es-AR')}</p>
+                    </div>
+                    <div className="md:col-span-2 text-zinc-500">
+                      Fuente FX: {dataset.dashboardMetrics.fxDataset} · Monedas: {dataset.dashboardMetrics.supportedCurrencies.join(', ')} · Arquitectura multi-país:{' '}
+                      {dataset.dashboardMetrics.multiCountryReady ? 'lista' : 'pendiente'}
+                    </div>
                   </div>
                 ) : null}
               </div>
