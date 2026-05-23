@@ -200,8 +200,12 @@ function DataCenterModule() {
                       <p className="text-sm font-semibold text-rose-300">{dataset.dashboardMetrics.totalEgresos.toLocaleString('es-AR')}</p>
                     </div>
                     <div>
-                      <p className="text-zinc-500">Resultado neto</p>
+                      <p className="text-zinc-500">Neto mensual</p>
                       <p className="text-sm font-semibold text-sky-300">{dataset.dashboardMetrics.resultadoNeto.toLocaleString('es-AR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">Caja acumulada</p>
+                      <p className="text-sm font-semibold text-cyan-300">{dataset.dashboardMetrics.cajaAcumulada.toLocaleString('es-AR')}</p>
                     </div>
                     <div>
                       <p className="text-zinc-500">Resultado USD</p>
@@ -214,6 +218,23 @@ function DataCenterModule() {
                   </div>
                 ) : null}
               </div>
+
+                {dataset.cashFlowMonthlyEvolution ? (
+                  <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
+                    <p className="mb-2 text-xs uppercase tracking-[0.16em] text-zinc-500">Evolución caja acumulada mensual</p>
+                    <div className="h-52">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={dataset.cashFlowMonthlyEvolution}>
+                          <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
+                          <XAxis dataKey="mes" stroke="#94a3b8" />
+                          <YAxis stroke="#94a3b8" />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="saldoFinal" name="Caja acumulada BRL" stroke="#63B58E" strokeWidth={2.6} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ) : null}
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/20">

@@ -144,11 +144,21 @@ export type DataCenterDataset = {
     totalIngresos: number;
     totalEgresos: number;
     resultadoNeto: number;
+    cajaAcumulada: number;
     resultadoUsd: number;
     fxDataset: 'Tipos de Cambio';
     supportedCurrencies: Array<'BRL' | 'ARS' | 'USD'>;
     multiCountryReady: boolean;
   };
+  cashFlowMonthlyEvolution?: Array<{
+    mes: string;
+    saldoInicial: number;
+    ingresos: number;
+    egresos: number;
+    netoMensual: number;
+    saldoFinal: number;
+    saldoFinalUsd: number;
+  }>;
 };
 
 export const dataCenterDatasets: DataCenterDataset[] = [
@@ -200,6 +210,7 @@ export const dataCenterDatasets: DataCenterDataset[] = [
       totalIngresos: 2245000,
       totalEgresos: 1732000,
       resultadoNeto: 513000,
+      cajaAcumulada: 513000,
       resultadoUsd: 412300,
       fxDataset: 'Tipos de Cambio',
       supportedCurrencies: ['BRL', 'ARS', 'USD'],
@@ -212,9 +223,41 @@ export const dataCenterDatasets: DataCenterDataset[] = [
   {
     id: 'cashflow-brasil',
     name: 'Cash Flow Brasil',
-    description: 'Carga de ingresos, egresos y proyección mensual de caja para Brasil.',
-    requiredFields: ['Fecha', 'Moneda', 'Ingreso', 'Egreso'],
-    lastUpdated: '17 may 2026, 09:42',
+    description: 'Carga mensual de caja Brasil con saldo inicial/final, neto y acumulado para seguimiento operativo.',
+    requiredFields: ['Fecha', 'Moneda', 'Saldo inicial', 'Ingresos', 'Egresos', 'Neto mensual', 'Saldo final/acumulado'],
+    conversionConfig: {
+      enabled: true,
+      method: 'divide_by_tc_usd',
+      supportedCountries: ['brasil'],
+      preserveFields: ['originalAmount', 'originalCurrency', 'appliedExchangeRate', 'usdAmount'],
+      futureAutomationReady: true,
+      sourceMode: 'manual_file_upload',
+    },
+    dashboardMetrics: {
+      totalIngresos: 2810000,
+      totalEgresos: 2195000,
+      resultadoNeto: 615000,
+      cajaAcumulada: 1645000,
+      resultadoUsd: 118900,
+      fxDataset: 'Tipos de Cambio',
+      supportedCurrencies: ['BRL', 'USD'],
+      multiCountryReady: true,
+    },
+    cashFlowMonthlyEvolution: [
+      { mes: 'ene-2026', saldoInicial: 980000, ingresos: 410000, egresos: 365000, netoMensual: 45000, saldoFinal: 1025000, saldoFinalUsd: 183000 },
+      { mes: 'feb-2026', saldoInicial: 1025000, ingresos: 430000, egresos: 372000, netoMensual: 58000, saldoFinal: 1083000, saldoFinalUsd: 190300 },
+      { mes: 'mar-2026', saldoInicial: 1083000, ingresos: 465000, egresos: 389000, netoMensual: 76000, saldoFinal: 1159000, saldoFinalUsd: 200100 },
+      { mes: 'abr-2026', saldoInicial: 1159000, ingresos: 492000, egresos: 401000, netoMensual: 91000, saldoFinal: 1250000, saldoFinalUsd: 214700 },
+      { mes: 'may-2026', saldoInicial: 1250000, ingresos: 538000, egresos: 428000, netoMensual: 110000, saldoFinal: 1360000, saldoFinalUsd: 230500 },
+      { mes: 'jun-2026', saldoInicial: 1360000, ingresos: 475000, egresos: 430000, netoMensual: 45000, saldoFinal: 1405000, saldoFinalUsd: 239800 },
+      { mes: 'jul-2026', saldoInicial: 1405000, ingresos: 0, egresos: 0, netoMensual: 0, saldoFinal: 1405000, saldoFinalUsd: 246200 },
+      { mes: 'ago-2026', saldoInicial: 1405000, ingresos: 0, egresos: 0, netoMensual: 0, saldoFinal: 1405000, saldoFinalUsd: 251000 },
+      { mes: 'sep-2026', saldoInicial: 1405000, ingresos: 0, egresos: 0, netoMensual: 0, saldoFinal: 1405000, saldoFinalUsd: 255400 },
+      { mes: 'oct-2026', saldoInicial: 1405000, ingresos: 0, egresos: 0, netoMensual: 0, saldoFinal: 1405000, saldoFinalUsd: 258900 },
+      { mes: 'nov-2026', saldoInicial: 1405000, ingresos: 0, egresos: 0, netoMensual: 0, saldoFinal: 1405000, saldoFinalUsd: 261500 },
+      { mes: 'dic-2026', saldoInicial: 1405000, ingresos: 0, egresos: 0, netoMensual: 0, saldoFinal: 1405000, saldoFinalUsd: 264300 },
+    ],
+    lastUpdated: '23 may 2026, 09:42',
     status: 'ok',
     validationMessage: 'Validación completada correctamente.',
   },
