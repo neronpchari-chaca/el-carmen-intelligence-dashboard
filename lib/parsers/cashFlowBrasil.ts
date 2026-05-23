@@ -46,6 +46,11 @@ type ParseInput = {
   hoja1Rows?: CashFlowBrasilRow[];
 };
 
+type BalanceRowMatch = {
+  row: CashFlowBrasilRow;
+  labelIndex: number;
+};
+
 const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
 
 const normalizeText = (value: CashFlowBrasilCell) =>
@@ -77,9 +82,19 @@ const findHeaderIndex = (headers: string[], candidates: string[]) =>
 
 const isMonthHeader = (value: CashFlowBrasilCell) => MONTH_PATTERN.test(String(value ?? '').trim());
 
-const findBalanceRow = (rows: CashFlowBrasilRow[], label: string) => {
+const findBalanceRow = (rows: CashFlowBrasilRow[], label: string): BalanceRowMatch | undefined => {
   const target = normalizeText(label);
-  return rows.find((row) => normalizeText(row[0]) === target || normalizeText(row[0]).includes(target));
+
+  for (const row of rows) {
+    const labelIndex = row.findIndex((cell) => {
+      const normalized = normalizeText(cell);
+      return normalized === target || normalized.includes(target);
+    });
+
+    if (labelIndex >= 0) return { row, labelIndex };
+  }
+
+  return undefined;
 };
 
 const findMonthHeaderRow = (rows: CashFlowBrasilRow[]) =>
@@ -171,10 +186,10 @@ function buildBalanceChecks(
   warnings: string[],
 ): CashFlowBrasilBalanceCheck[] {
   const headerRow = findMonthHeaderRow(hoja1Rows);
-  const openingRow = findBalanceRow(hoja1Rows, 'saldo anterior');
-  const closingRow = findBalanceRow(hoja1Rows, 'saldo final');
+  const openingMatch = findBalanceRow(hoja1Rows, 'saldo anterior');
+  const closingMatch = findBalanceRow(hoja1Rows, 'saldo final');
 
-  if (!headerRow || !openingRow || !closingRow) {
+  if (!headerRow || !openingMatch || !closingMatch) {
     warnings.push('No se pudieron detectar saldos para validar saldo anterior + neto = saldo final.');
     return [];
   }
@@ -185,8 +200,10 @@ function buildBalanceChecks(
     const period = String(cell ?? '').trim();
     if (!MONTH_PATTERN.test(period)) return [];
 
-    const openingBalance = roundMoney(parseAmount(openingRow[index]));
-    const closingBalance = roundMoney(parseAmount(closingRow[index]));
+    const openingValueIndex = resolveBalanceValueIndex(openingMatch, index);
+    const closingValueIndex = resolveBalanceValueIndex(closingMatch, index);
+    const openingBalance = roundMoney(parseAmount(openingMatch.row[openingValueIndex]));
+    const closingBalance = roundMoney(parseAmount(closingMatch.row[closingValueIndex]));
     const normalizedNet = roundMoney(netByPeriod.get(period) ?? 0);
     const calculatedClosingBalance = roundMoney(openingBalance + normalizedNet);
     const difference = roundMoney(closingBalance - calculatedClosingBalance);
@@ -201,4 +218,13 @@ function buildBalanceChecks(
       status: Math.abs(difference) <= 0.01 ? 'ok' as const : 'difference' as const,
     }];
   });
+}
+
+function resolveBalanceValueIndex(match: BalanceRowMatch, monthIndex: number) {
+  if (typeof match.row[monthIndex] === 'number') return monthIndex;
+
+  const nextIndex = monthIndex + 1;
+  if (typeof match.row[nextIndex] === 'number') return nextIndex;
+
+  return monthIndex <= match.labelIndex ? monthIndex + 1 : monthIndex;
 }
