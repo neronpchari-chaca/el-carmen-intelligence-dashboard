@@ -8,6 +8,14 @@ Este repositorio evoluciona hacia una plataforma replicable de gestion: un model
 
 La meta es que funcione como una fabrica de herramientas de gestion: RRHH, finanzas, produccion, ventas, inventario, documentos o cualquier modulo que una empresa necesite. Cada modulo debe poder empezar simple, nutrirse de datos faciles de cargar y crecer hacia validaciones automaticas, actualizacion automatica e IA analitica.
 
+## Base modular
+
+La primera estructura configurable esta en:
+
+- `config/moduleCatalog.ts`: catalogo de modulos posibles.
+- `config/businessProfiles.ts`: perfiles de negocio y modulos activos.
+- `docs/06-como-crear-un-modulo.md`: guia simple para transformar una necesidad en modulo.
+
 La documentacion principal esta en:
 
 - `docs/00-guia-de-gobierno.md`
