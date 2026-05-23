@@ -45,6 +45,7 @@ export const sidebarSections: NavSection[] = [
     title: 'DATOS',
     items: [
       { id: 'data-center', label: 'Centro de Datos' },
+      { id: 'data-ingestion', label: 'Ingesta de Datos' },
       { id: 'data-governance', label: 'Gobierno de Datos' },
       { id: 'system-status', label: 'Estado del Sistema' },
     ],
