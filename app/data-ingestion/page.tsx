@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Bot, CheckCircle2, FileSpreadsheet, ShieldCheck, Upload, Wand2 } from 'lucide-react';
+import { ArrowLeft, Bot, CheckCircle2, FileSpreadsheet, History, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { exampleCashFlowIngestionProfiles, ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
 
 const stageOrder: IngestionStage[] = [
@@ -38,6 +38,20 @@ const validationChecks = [
   { label: 'Moneda informada', status: 'warning', detail: 'El archivo no trae moneda; se aplica ARS por perfil del cliente.' },
   { label: 'Categorias reconocidas', status: 'warning', detail: '1 categoria requiere confirmacion: Proveedor.' },
   { label: 'Totales comparables contra archivo original', status: 'ok', detail: 'Diferencia total: 0.' },
+];
+
+const ingestionHistory = [
+  { version: 'v1.9', file: 'cash_flow_cliente_demo_abril.xlsx', date: '22 may 2026 18:35', owner: 'Control de Gestion', status: 'Publicado', records: 128, warnings: 0, net: 513000 },
+  { version: 'v1.8', file: 'cash_flow_cliente_demo_marzo.xlsx', date: '18 abr 2026 11:20', owner: 'Finanzas', status: 'Publicado', records: 117, warnings: 1, net: 438500 },
+  { version: 'v1.7', file: 'cash_flow_cliente_demo_febrero.xlsx', date: '19 mar 2026 09:42', owner: 'Finanzas', status: 'Observado', records: 119, warnings: 4, net: 392800 },
+];
+
+const auditTrail = [
+  'Archivo recibido y conservado como fuente original.',
+  'Mapeo sugerido por IA pendiente de aprobacion humana.',
+  'Moneda ARS aplicada por perfil del cliente.',
+  'Categoria Proveedor marcada para confirmacion antes de publicacion.',
+  'Publicacion requiere aprobacion de usuario responsable.',
 ];
 
 const sourceTotals = { income: 164000, expense: 90000 };
@@ -296,6 +310,60 @@ export default function DataIngestionPage() {
             </section>
           </section>
         ) : null}
+
+        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <article className="glass rounded-2xl p-5 shadow-premium">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-emerald-300"><History size={20} /></div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Historial</p>
+                <h2 className="mt-1 text-xl font-semibold text-white">Cargas anteriores</h2>
+              </div>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm text-zinc-300">
+                <thead className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Version</th>
+                    <th className="px-3 py-2 text-left">Archivo</th>
+                    <th className="px-3 py-2 text-left">Responsable</th>
+                    <th className="px-3 py-2 text-left">Estado</th>
+                    <th className="px-3 py-2 text-right">Registros</th>
+                    <th className="px-3 py-2 text-right">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ingestionHistory.map((load) => (
+                    <tr key={load.version} className="border-t border-zinc-800">
+                      <td className="px-3 py-3 text-emerald-200">{load.version}</td>
+                      <td className="px-3 py-3">
+                        <p>{load.file}</p>
+                        <p className="text-xs text-zinc-500">{load.date}</p>
+                      </td>
+                      <td className="px-3 py-3">{load.owner}</td>
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full border px-2 py-1 text-xs ${load.status === 'Publicado' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>{load.status}</span>
+                      </td>
+                      <td className="px-3 py-3 text-right">{load.records}</td>
+                      <td className="px-3 py-3 text-right text-sky-300">{load.net.toLocaleString('es-AR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article className="glass rounded-2xl p-5 shadow-premium">
+            <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Trazabilidad</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Rastro de control</h2>
+            <ul className="mt-4 space-y-2 text-sm text-zinc-300">
+              {auditTrail.map((item) => (
+                <li key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">{item}</li>
+              ))}
+            </ul>
+          </article>
+        </section>
       </section>
     </main>
   );
