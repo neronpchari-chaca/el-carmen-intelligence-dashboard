@@ -42,6 +42,10 @@ export const sidebarSections: NavSection[] = [
     ],
   },
   {
+    title: 'DATOS',
+    items: [{ id: 'data-center', label: 'Centro de Datos' }],
+  },
+  {
     title: 'DOCUMENTOS',
     items: [
       { id: 'docs-main', label: 'Documentos' },
@@ -112,3 +116,55 @@ export const placeholdersByModule: Record<string, { title: string; description: 
     { title: 'Roadmap funcional', description: 'Backlog modular para escalar analítica, workflows y automatización por función.' },
   ],
 };
+
+
+export type DataCenterDatasetStatus = 'ok' | 'incomplete' | 'error';
+
+export type DataCenterDataset = {
+  id: string;
+  name: string;
+  description: string;
+  requiredFields: string[];
+  lastUpdated: string;
+  status: DataCenterDatasetStatus;
+  validationMessage: string;
+};
+
+export const dataCenterDatasets: DataCenterDataset[] = [
+  {
+    id: 'cashflow-brasil',
+    name: 'Cash Flow Brasil',
+    description: 'Carga de ingresos, egresos y proyección mensual de caja para Brasil.',
+    requiredFields: ['Fecha', 'Moneda', 'Ingreso', 'Egreso'],
+    lastUpdated: '17 may 2026, 09:42',
+    status: 'ok',
+    validationMessage: 'Validación completada correctamente.',
+  },
+  {
+    id: 'royalties-brasil',
+    name: 'Royalties Brasil',
+    description: 'Detalle de contratos, cobros y estado de captura de royalties.',
+    requiredFields: ['Fecha', 'Variedad', 'Moneda', 'Monto'],
+    lastUpdated: '15 may 2026, 16:11',
+    status: 'incomplete',
+    validationMessage: 'Campo obligatorio vacío',
+  },
+  {
+    id: 'hectareas-pais',
+    name: 'Hectáreas por País',
+    description: 'Superficie sembrada por país y campaña para tablero regional.',
+    requiredFields: ['Fecha', 'País', 'Hectáreas'],
+    lastUpdated: '20 may 2026, 12:08',
+    status: 'ok',
+    validationMessage: 'Validación completada correctamente.',
+  },
+  {
+    id: 'pipeline-genetico',
+    name: 'Pipeline Genético',
+    description: 'Seguimiento de materiales, etapa de desarrollo y prioridad comercial.',
+    requiredFields: ['Fecha', 'Línea', 'Etapa', 'Responsable'],
+    lastUpdated: '14 may 2026, 08:25',
+    status: 'error',
+    validationMessage: 'Moneda inválida',
+  },
+];
