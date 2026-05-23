@@ -47,11 +47,112 @@ const auditTrail = [
   'Publicacion requiere aprobacion de usuario responsable.',
 ];
 
+type FileDiagnostic = {
+  sheetNames: string[];
+  hasHoja1: boolean;
+  hasMapaCuentas: boolean;
+  hoja1Months: string[];
+  mapaMonths: string[];
+  missingInMapa: string[];
+  status: 'ok' | 'warning';
+  suggestion: string;
+};
+
+const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
+const MONTH_ABBREVIATIONS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30);
+
 const normalizeRows = (rows: unknown[][]): CashFlowBrasilRow[] =>
   rows.map((row) => row.map((cell): CashFlowBrasilCell => (typeof cell === 'number' || typeof cell === 'string' ? cell : cell == null ? null : String(cell))));
 
 const fallbackTotals = { income: 164000, expense: 90000 };
 const formatMoney = (value: number) => value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const normalizeMonth = (value: unknown): string | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 30000 && value < 60000) {
+    const date = new Date(EXCEL_EPOCH_UTC + value * 24 * 60 * 60 * 1000);
+    return `${MONTH_ABBREVIATIONS[date.getUTCMonth()]}-${String(date.getUTCFullYear()).slice(-2)}`;
+  }
+
+  const normalized = String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\//g, '-')
+    .replace(/\s+/g, '-')
+    .replace('.', '');
+
+  return MONTH_PATTERN.test(normalized) ? normalized : null;
+};
+
+const extractMonths = (rows: CashFlowBrasilRow[]) => {
+  const months: string[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    for (const cell of row) {
+      const month = normalizeMonth(cell);
+      if (month && !seen.has(month)) {
+        seen.add(month);
+        months.push(month);
+      }
+    }
+  }
+
+  return months;
+};
+
+const formatMonthRange = (months: string[]) => {
+  if (months.length === 0) return 'No detectado';
+  if (months.length === 1) return months[0];
+  return `${months[0]} a ${months[months.length - 1]}`;
+};
+
+const buildFileDiagnostic = (sheetNames: string[], hoja1Rows?: CashFlowBrasilRow[], mapaRows?: CashFlowBrasilRow[]): FileDiagnostic => {
+  const hoja1Months = hoja1Rows ? extractMonths(hoja1Rows) : [];
+  const mapaMonths = mapaRows ? extractMonths(mapaRows.slice(0, 1)) : [];
+  const missingInMapa = hoja1Months.filter((month) => !mapaMonths.includes(month));
+  const hasHoja1 = Boolean(hoja1Rows);
+  const hasMapaCuentas = Boolean(mapaRows);
+
+  if (!hasMapaCuentas) {
+    return {
+      sheetNames,
+      hasHoja1,
+      hasMapaCuentas,
+      hoja1Months,
+      mapaMonths,
+      missingInMapa: [],
+      status: 'warning',
+      suggestion: 'No hay Mapa cuentas. La plataforma deberia crear un mapa temporal desde la hoja principal antes de cargar.',
+    };
+  }
+
+  if (missingInMapa.length > 0) {
+    return {
+      sheetNames,
+      hasHoja1,
+      hasMapaCuentas,
+      hoja1Months,
+      mapaMonths,
+      missingInMapa,
+      status: 'warning',
+      suggestion: `Hay saldos hasta ${hoja1Months[hoja1Months.length - 1]}, pero el mapa llega hasta ${mapaMonths[mapaMonths.length - 1] ?? 'sin meses'}. Falta completar ${missingInMapa.join(', ')} en Mapa cuentas.`,
+    };
+  }
+
+  return {
+    sheetNames,
+    hasHoja1,
+    hasMapaCuentas,
+    hoja1Months,
+    mapaMonths,
+    missingInMapa,
+    status: 'ok',
+    suggestion: 'La estructura del archivo parece consistente para iniciar validaciones.',
+  };
+};
 
 export default function DataIngestionPage() {
   const [stage, setStage] = useState<IngestionStage>('received');
@@ -59,6 +160,7 @@ export default function DataIngestionPage() {
   const [approvedMappings, setApprovedMappings] = useState<Record<string, boolean>>({});
   const [parseResult, setParseResult] = useState<CashFlowBrasilParseResult | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  const [fileDiagnostic, setFileDiagnostic] = useState<FileDiagnostic | null>(null);
 
   const schema = standardDatasetSchemas.find((item) => item.id === 'cash-flow') ?? standardDatasetSchemas[0];
   const profile = parseResult
@@ -141,6 +243,7 @@ export default function DataIngestionPage() {
     setApprovedMappings({});
     setParseResult(null);
     setReadError(null);
+    setFileDiagnostic(null);
 
     try {
       const XLSX = await import('xlsx');
@@ -148,14 +251,16 @@ export default function DataIngestionPage() {
       const workbook = XLSX.read(buffer, { type: 'array' });
       const mapaSheet = workbook.Sheets['Mapa cuentas'];
       const hoja1Sheet = workbook.Sheets['Hoja1'];
+      const mapaRows = mapaSheet ? normalizeRows(XLSX.utils.sheet_to_json(mapaSheet, { header: 1, raw: true, defval: null }) as unknown[][]) : undefined;
+      const hoja1Rows = hoja1Sheet ? normalizeRows(XLSX.utils.sheet_to_json(hoja1Sheet, { header: 1, raw: true, defval: null }) as unknown[][]) : undefined;
 
-      if (!mapaSheet || !hoja1Sheet) {
+      setFileDiagnostic(buildFileDiagnostic(workbook.SheetNames, hoja1Rows, mapaRows));
+
+      if (!mapaRows || !hoja1Rows) {
         setReadError('El archivo no contiene las hojas esperadas: Mapa cuentas y Hoja1.');
         return;
       }
 
-      const mapaRows = normalizeRows(XLSX.utils.sheet_to_json(mapaSheet, { header: 1, raw: true, defval: null }) as unknown[][]);
-      const hoja1Rows = normalizeRows(XLSX.utils.sheet_to_json(hoja1Sheet, { header: 1, raw: true, defval: null }) as unknown[][]);
       const result = parseCashFlowBrasil({ sourceFile: file.name, mapaCuentasRows: mapaRows, hoja1Rows });
 
       setParseResult(result);
@@ -248,6 +353,41 @@ export default function DataIngestionPage() {
           </article>
 
           <section className="space-y-6">
+            {fileDiagnostic ? (
+              <article className="glass rounded-2xl p-5 shadow-premium">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Diagnostico del archivo</p>
+                    <h2 className="mt-1 text-xl font-semibold text-white">Lectura inteligente</h2>
+                  </div>
+                  <span className={`w-fit rounded-full border px-3 py-1 text-xs ${fileDiagnostic.status === 'ok' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>
+                    {fileDiagnostic.status === 'ok' ? 'Estructura consistente' : 'Revisar estructura'}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Hojas encontradas</p>
+                    <p className="mt-1 text-zinc-100">{fileDiagnostic.sheetNames.join(', ')}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Tipo de lectura</p>
+                    <p className="mt-1 text-zinc-100">{fileDiagnostic.hasMapaCuentas ? 'Con mapa de cuentas' : 'Sin mapa: requiere mapa temporal'}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Meses en Hoja1</p>
+                    <p className="mt-1 text-zinc-100">{formatMonthRange(fileDiagnostic.hoja1Months)}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Meses en Mapa cuentas</p>
+                    <p className="mt-1 text-zinc-100">{formatMonthRange(fileDiagnostic.mapaMonths)}</p>
+                  </div>
+                </div>
+                <div className={`mt-3 rounded-xl border p-3 text-sm ${fileDiagnostic.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/25 bg-amber-500/10 text-amber-200'}`}>
+                  {fileDiagnostic.suggestion}
+                </div>
+              </article>
+            ) : null}
+
             <article className="glass rounded-2xl p-5 shadow-premium">
               <div className="flex items-start justify-between gap-3">
                 <div>
