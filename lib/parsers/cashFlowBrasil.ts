@@ -1,0 +1,204 @@
+export type CashFlowBrasilCell = string | number | null | undefined;
+
+export type CashFlowBrasilRow = CashFlowBrasilCell[];
+
+export type CashFlowBrasilRecord = {
+  period: string;
+  country: 'Brasil';
+  currency: 'BRL';
+  type: 'Entrada' | 'Salida';
+  group: string;
+  account: string;
+  income: number;
+  expense: number;
+  net: number;
+  sourceFile: string;
+  sourceRow?: number;
+};
+
+export type CashFlowBrasilBalanceCheck = {
+  period: string;
+  openingBalance: number;
+  normalizedNet: number;
+  closingBalance: number;
+  calculatedClosingBalance: number;
+  difference: number;
+  status: 'ok' | 'difference';
+};
+
+export type CashFlowBrasilParseResult = {
+  sourceFile: string;
+  records: CashFlowBrasilRecord[];
+  monthlySummary: Array<{
+    period: string;
+    records: number;
+    income: number;
+    expense: number;
+    net: number;
+  }>;
+  balanceChecks: CashFlowBrasilBalanceCheck[];
+  warnings: string[];
+};
+
+type ParseInput = {
+  sourceFile: string;
+  mapaCuentasRows: CashFlowBrasilRow[];
+  hoja1Rows?: CashFlowBrasilRow[];
+};
+
+const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
+
+const normalizeText = (value: CashFlowBrasilCell) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const parseAmount = (value: CashFlowBrasilCell): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (value === null || value === undefined) return 0;
+
+  const text = String(value)
+    .replace(/R\$/gi, '')
+    .replace(/\s/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+
+  if (!text) return 0;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const findHeaderIndex = (headers: string[], candidates: string[]) =>
+  headers.findIndex((header) => candidates.includes(normalizeText(header)));
+
+const isMonthHeader = (value: CashFlowBrasilCell) => MONTH_PATTERN.test(String(value ?? '').trim());
+
+const findBalanceRow = (rows: CashFlowBrasilRow[], label: string) => {
+  const target = normalizeText(label);
+  return rows.find((row) => normalizeText(row[0]) === target || normalizeText(row[0]).includes(target));
+};
+
+const findMonthHeaderRow = (rows: CashFlowBrasilRow[]) =>
+  rows.find((row) => row.filter(isMonthHeader).length >= 3);
+
+export function parseCashFlowBrasil(input: ParseInput): CashFlowBrasilParseResult {
+  const warnings: string[] = [];
+  const [headerRow, ...dataRows] = input.mapaCuentasRows;
+
+  if (!headerRow) {
+    return {
+      sourceFile: input.sourceFile,
+      records: [],
+      monthlySummary: [],
+      balanceChecks: [],
+      warnings: ['La hoja Mapa cuentas no tiene encabezados.'],
+    };
+  }
+
+  const headers = headerRow.map((cell) => String(cell ?? ''));
+  const typeIndex = findHeaderIndex(headers, ['tipo']);
+  const groupIndex = findHeaderIndex(headers, ['grupo']);
+  const accountIndex = findHeaderIndex(headers, ['cuenta']);
+  const sourceRowIndex = findHeaderIndex(headers, ['fila origen']);
+  const monthIndexes = headers
+    .map((header, index) => ({ header: header.trim(), index }))
+    .filter(({ header }) => MONTH_PATTERN.test(header));
+
+  if (typeIndex < 0) warnings.push('No se encontro la columna Tipo.');
+  if (groupIndex < 0) warnings.push('No se encontro la columna Grupo.');
+  if (accountIndex < 0) warnings.push('No se encontro la columna Cuenta.');
+  if (monthIndexes.length === 0) warnings.push('No se encontraron columnas mensuales tipo mar-26.');
+
+  const records = dataRows.flatMap((row) => {
+    const rawType = normalizeText(row[typeIndex]);
+    const type: 'Entrada' | 'Salida' = rawType.includes('entrada') ? 'Entrada' : 'Salida';
+    const group = String(row[groupIndex] ?? '').trim();
+    const account = String(row[accountIndex] ?? '').trim();
+    const sourceRow = sourceRowIndex >= 0 ? Number(row[sourceRowIndex]) || undefined : undefined;
+
+    if (!rawType || !account) return [];
+
+    return monthIndexes.flatMap(({ header, index }) => {
+      const amount = parseAmount(row[index]);
+      if (amount === 0) return [];
+
+      return [{
+        period: header,
+        country: 'Brasil' as const,
+        currency: 'BRL' as const,
+        type,
+        group,
+        account,
+        income: amount > 0 ? roundMoney(amount) : 0,
+        expense: amount < 0 ? roundMoney(Math.abs(amount)) : 0,
+        net: roundMoney(amount),
+        sourceFile: input.sourceFile,
+        sourceRow,
+      }];
+    });
+  });
+
+  const summaryByPeriod = new Map<string, { period: string; records: number; income: number; expense: number; net: number }>();
+
+  for (const record of records) {
+    const current = summaryByPeriod.get(record.period) ?? { period: record.period, records: 0, income: 0, expense: 0, net: 0 };
+    current.records += 1;
+    current.income = roundMoney(current.income + record.income);
+    current.expense = roundMoney(current.expense + record.expense);
+    current.net = roundMoney(current.net + record.net);
+    summaryByPeriod.set(record.period, current);
+  }
+
+  const monthlySummary = Array.from(summaryByPeriod.values());
+  const balanceChecks = input.hoja1Rows ? buildBalanceChecks(input.hoja1Rows, monthlySummary, warnings) : [];
+
+  return {
+    sourceFile: input.sourceFile,
+    records,
+    monthlySummary,
+    balanceChecks,
+    warnings,
+  };
+}
+
+function buildBalanceChecks(
+  hoja1Rows: CashFlowBrasilRow[],
+  monthlySummary: CashFlowBrasilParseResult['monthlySummary'],
+  warnings: string[],
+): CashFlowBrasilBalanceCheck[] {
+  const headerRow = findMonthHeaderRow(hoja1Rows);
+  const openingRow = findBalanceRow(hoja1Rows, 'saldo anterior');
+  const closingRow = findBalanceRow(hoja1Rows, 'saldo final');
+
+  if (!headerRow || !openingRow || !closingRow) {
+    warnings.push('No se pudieron detectar saldos para validar saldo anterior + neto = saldo final.');
+    return [];
+  }
+
+  const netByPeriod = new Map(monthlySummary.map((summary) => [summary.period, summary.net]));
+
+  return headerRow.flatMap((cell, index) => {
+    const period = String(cell ?? '').trim();
+    if (!MONTH_PATTERN.test(period)) return [];
+
+    const openingBalance = roundMoney(parseAmount(openingRow[index]));
+    const closingBalance = roundMoney(parseAmount(closingRow[index]));
+    const normalizedNet = roundMoney(netByPeriod.get(period) ?? 0);
+    const calculatedClosingBalance = roundMoney(openingBalance + normalizedNet);
+    const difference = roundMoney(closingBalance - calculatedClosingBalance);
+
+    return [{
+      period,
+      openingBalance,
+      normalizedNet,
+      closingBalance,
+      calculatedClosingBalance,
+      difference,
+      status: Math.abs(difference) <= 0.01 ? 'ok' as const : 'difference' as const,
+    }];
+  });
+}
