@@ -92,6 +92,9 @@ function DataCenterModule() {
         } else if (lowerName.includes('moneda')) {
           status = 'error';
           validationMessage = 'Moneda inválida';
+        } else if (datasetId === 'tipos-cambio' && lowerName.includes('faltatc')) {
+          status = 'error';
+          validationMessage = 'Falta tipo de cambio para el mes';
         } else if (lowerName.includes('vacio')) {
           status = 'incomplete';
           validationMessage = 'Campo obligatorio vacío';
@@ -164,6 +167,20 @@ function DataCenterModule() {
                 <div className="flex items-center gap-2 text-xs text-zinc-400">
                   <Clock3 size={14} /> Última actualización: {dataset.lastUpdated}
                 </div>
+                <div className="text-xs text-zinc-400">
+                  Estado de validación:{' '}
+                  <span className={dataset.status === 'ok' ? 'text-emerald-300' : dataset.status === 'error' ? 'text-rose-300' : 'text-amber-300'}>
+                    {dataset.validationMessage}
+                  </span>
+                </div>
+                {dataset.supportsProjectedMonths ? (
+                  <div className="text-xs text-zinc-400">Admite carga proyectada de hasta {dataset.supportsProjectedMonths} meses.</div>
+                ) : null}
+                {dataset.conversionConfig?.enabled ? (
+                  <div className="text-xs text-zinc-400">
+                    Conversión a USD preparada (manual hoy; lista para regla/API futura).
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
