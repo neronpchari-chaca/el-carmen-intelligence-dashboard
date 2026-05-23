@@ -20,6 +20,11 @@ import {
   compareMetrics,
   countryKpis,
   dataCenterDatasets,
+  governanceDatasets,
+  governanceFutureDatasets,
+  governanceNamingRules,
+  governanceOfficialKpis,
+  governanceRoadmap,
   kpisConsolidated,
   placeholdersByModule,
   projectedGrowth,
@@ -259,12 +264,64 @@ function CompareDashboard() { return (
 
 function GlobalDashboard() { return (<div className="space-y-6">{renderKpis(kpisConsolidated)}<section className="grid gap-6 xl:grid-cols-2"><article className="glass h-80 rounded-2xl p-5 shadow-premium"><h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Royalties consolidados Argentina + Brasil (USD M)</h3><ResponsiveContainer width="100%" height="88%"><LineChart data={royaltiesEvolution}><CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" /><XAxis dataKey="year" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Line type="monotone" dataKey="argentina" stroke="#63B58E" strokeWidth={2.8} /><Line type="monotone" dataKey="brasil" stroke="#1E7C59" strokeWidth={2.8} /></LineChart></ResponsiveContainer></article><article className="glass h-80 rounded-2xl p-5 shadow-premium"><h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Superficie genética: Argentina vs Brasil (kha)</h3><ResponsiveContainer width="100%" height="88%"><BarChart data={surfaceComparison}><CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" /><XAxis dataKey="name" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Bar dataKey="argentina" fill="#63B58E" radius={[8, 8, 0, 0]} /><Bar dataKey="brasil" fill="#1E7C59" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></article></section><article className="glass h-80 rounded-2xl p-5 shadow-premium"><h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Crecimiento proyectado regional (%)</h3><ResponsiveContainer width="100%" height="88%"><AreaChart data={projectedGrowth}><CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" /><XAxis dataKey="quarter" stroke="#94a3b8" /><YAxis stroke="#94a3b8" /><Tooltip /><Area type="monotone" dataKey="conservative" stackId="1" stroke="#1F6148" fill="#1F6148" /><Area type="monotone" dataKey="target" stackId="2" stroke="#2B8D66" fill="#2B8D66" /><Area type="monotone" dataKey="upside" stackId="3" stroke="#63B58E" fill="#63B58E" /></AreaChart></ResponsiveContainer></article></div>); }
 
+function DataGovernanceModule() {
+  return (
+    <section className="space-y-6">
+      <article className="glass rounded-2xl p-5 shadow-premium">
+        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">DATOS · Gobierno de Datos</p>
+        <h2 className="mt-2 text-2xl font-semibold text-zinc-100">Arquitectura, metodología y control operativo de datasets</h2>
+        <p className="mt-2 max-w-4xl text-sm text-zinc-400">
+          Marco operativo para documentar datasets oficiales, responsabilidades, calidad de carga y lineamientos de evolución de la plataforma manteniendo el diseño enterprise actual.
+        </p>
+      </article>
+
+      <article className="glass overflow-hidden rounded-2xl border border-zinc-800/80 shadow-premium">
+        <div className="border-b border-zinc-800 bg-zinc-900/35 px-5 py-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Datasets registrados</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm text-zinc-300">
+            <thead className="bg-zinc-900/50 text-xs uppercase tracking-[0.15em] text-zinc-500">
+              <tr>
+                <th className="px-4 py-3 text-left">Dataset</th><th className="px-4 py-3 text-left">Responsable</th><th className="px-4 py-3 text-left">Frecuencia</th><th className="px-4 py-3 text-left">Moneda base</th><th className="px-4 py-3 text-left">Versión</th><th className="px-4 py-3 text-left">Última carga</th><th className="px-4 py-3 text-left">Estado validación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {governanceDatasets.map((row) => (
+                <tr key={row.id} className="border-t border-zinc-800/80">
+                  <td className="px-4 py-3">{row.dataset}</td>
+                  <td className="px-4 py-3 text-zinc-400">{row.responsable}</td>
+                  <td className="px-4 py-3">{row.frecuenciaActualizacion}</td>
+                  <td className="px-4 py-3">{row.monedaBase}</td>
+                  <td className="px-4 py-3">{row.version}</td>
+                  <td className="px-4 py-3">{row.fechaUltimaCarga}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full border px-2 py-1 text-xs ${row.estadoValidacion === 'Validado' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : row.estadoValidacion === 'En revisión' ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-rose-500/30 bg-rose-500/10 text-rose-300'}`}>{row.estadoValidacion}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <article className="glass rounded-2xl p-5 shadow-premium"><h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Roadmap plataforma</h3><ul className="mt-3 space-y-2 text-sm text-zinc-300">{governanceRoadmap.map((item) => <li key={item.hito} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3"><p className="text-xs uppercase tracking-[0.15em] text-zinc-500">{item.trimestre} · {item.estado}</p><p className="mt-1">{item.hito}</p></li>)}</ul></article>
+        <article className="glass rounded-2xl p-5 shadow-premium"><h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Datasets futuros</h3><ul className="mt-3 space-y-2 text-sm text-zinc-300">{governanceFutureDatasets.map((item) => <li key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">{item}</li>)}</ul></article>
+        <article className="glass rounded-2xl p-5 shadow-premium"><h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">KPIs oficiales</h3><ul className="mt-3 space-y-2 text-sm text-zinc-300">{governanceOfficialKpis.map((item) => <li key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">{item}</li>)}</ul></article>
+        <article className="glass rounded-2xl p-5 shadow-premium"><h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Reglas de nomenclatura</h3><ul className="mt-3 space-y-2 text-sm text-zinc-300">{governanceNamingRules.map((item) => <li key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">{item}</li>)}</ul></article>
+      </section>
+    </section>
+  );
+}
+
 export function DashboardContent({ activeId }: { activeId: string }) {
   if (activeId === 'region-argentina') return <CountryDashboard country="argentina" />;
   if (activeId === 'region-brasil') return <CountryDashboard country="brasil" />;
   if (activeId === 'region-compare') return <CompareDashboard />;
   if (activeId === 'global-dashboard') return <GlobalDashboard />;
   if (activeId === 'data-center') return <DataCenterModule />;
+  if (activeId === 'data-governance') return <DataGovernanceModule />;
 
   return (
     <section className="space-y-4">

@@ -43,7 +43,10 @@ export const sidebarSections: NavSection[] = [
   },
   {
     title: 'DATOS',
-    items: [{ id: 'data-center', label: 'Centro de Datos' }],
+    items: [
+      { id: 'data-center', label: 'Centro de Datos' },
+      { id: 'data-governance', label: 'Gobierno de Datos' },
+    ],
   },
   {
     title: 'DOCUMENTOS',
@@ -242,4 +245,83 @@ export const dataCenterDatasets: DataCenterDataset[] = [
     status: 'error',
     validationMessage: 'Moneda inválida',
   },
+];
+
+export type DataGovernanceDataset = {
+  id: string;
+  dataset: string;
+  responsable: string;
+  frecuenciaActualizacion: string;
+  monedaBase: 'USD' | 'ARS' | 'BRL';
+  version: string;
+  fechaUltimaCarga: string;
+  estadoValidacion: 'Validado' | 'En revisión' | 'Observado';
+};
+
+export const governanceDatasets: DataGovernanceDataset[] = [
+  {
+    id: 'gov-1',
+    dataset: 'Tipos de Cambio',
+    responsable: 'Finanzas Corporativas',
+    frecuenciaActualizacion: 'Mensual',
+    monedaBase: 'USD',
+    version: 'v2.3',
+    fechaUltimaCarga: '21 may 2026',
+    estadoValidacion: 'Validado',
+  },
+  {
+    id: 'gov-2',
+    dataset: 'Cash Flow Operativo',
+    responsable: 'Control de Gestión AR-BR',
+    frecuenciaActualizacion: 'Mensual',
+    monedaBase: 'USD',
+    version: 'v1.9',
+    fechaUltimaCarga: '22 may 2026',
+    estadoValidacion: 'En revisión',
+  },
+  {
+    id: 'gov-3',
+    dataset: 'Royalties Brasil',
+    responsable: 'Revenue Assurance Brasil',
+    frecuenciaActualizacion: 'Quincenal',
+    monedaBase: 'BRL',
+    version: 'v1.4',
+    fechaUltimaCarga: '15 may 2026',
+    estadoValidacion: 'Observado',
+  },
+  {
+    id: 'gov-4',
+    dataset: 'Hectáreas por País',
+    responsable: 'Planeamiento Regional',
+    frecuenciaActualizacion: 'Mensual',
+    monedaBase: 'USD',
+    version: 'v3.1',
+    fechaUltimaCarga: '20 may 2026',
+    estadoValidacion: 'Validado',
+  },
+];
+
+export const governanceRoadmap = [
+  { trimestre: 'Q3 2026', hito: 'Catálogo centralizado con trazabilidad por versión', estado: 'En curso' },
+  { trimestre: 'Q4 2026', hito: 'Workflow de aprobación de cargas y evidencias', estado: 'Planificado' },
+  { trimestre: 'Q1 2027', hito: 'Integración API con fuentes oficiales por país', estado: 'Planificado' },
+];
+
+export const governanceFutureDatasets = [
+  'Cobranza detallada por canal y distribuidor',
+  'Inventario de semilla por planta y lote',
+  'Proyección de márgenes por unidad de negocio',
+];
+
+export const governanceOfficialKpis = [
+  'Tasa de validación en primer intento',
+  'Tiempo promedio de disponibilidad post-carga',
+  'Cobertura de datasets críticos con owner asignado',
+  'Cumplimiento de periodicidad de actualización',
+];
+
+export const governanceNamingRules = [
+  'Formato obligatorio: dominio_pais_granularidad_periodo_version (ej. finanzas_ar_mensual_2026m05_v1).',
+  'Nombres en minúsculas, sin espacios, usando guion bajo como separador.',
+  'Moneda y país deben explicitarse en columnas metadata_currency y metadata_country.',
 ];
