@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AlertCircle, CheckCircle2, CircleDashed, Clock3, Database, Upload } from 'lucide-react';
+import { Activity, AlertCircle, CheckCircle2, CircleDashed, Clock3, Database, Link2, Upload } from 'lucide-react';
 import {
   compareMetrics,
   countryKpis,
@@ -29,6 +29,7 @@ import {
   placeholdersByModule,
   projectedGrowth,
   royaltiesEvolution,
+  sidebarSections,
   surfaceComparison,
   type CountryCode,
   type DataCenterDataset,
@@ -336,6 +337,86 @@ function DataGovernanceModule() {
   );
 }
 
+function SystemStatusModule() {
+  const datasetsActivos = governanceDatasets.filter((dataset) => dataset.estadoValidacion === 'Validado').length;
+  const datasetsPendientes = governanceDatasets.filter((dataset) => dataset.estadoValidacion !== 'Validado').length;
+  const datasetsIncompletos = governanceDatasets.filter((dataset) => dataset.estadoValidacion === 'Observado').length;
+  const ultimaActualizacion = governanceDatasets.reduce((latest, row) => (row.fechaUltimaCarga > latest ? row.fechaUltimaCarga : latest), governanceDatasets[0]?.fechaUltimaCarga ?? 'N/D');
+  const estadoValidacion = datasetsPendientes === 0 ? 'Validación completa' : `${datasetsPendientes} datasets con validación pendiente`;
+
+  const semaforoEstado = datasetsIncompletos > 0 ? 'Crítico' : datasetsPendientes > 0 ? 'Atención' : 'Operativo';
+  const semaforoClass =
+    semaforoEstado === 'Operativo'
+      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+      : semaforoEstado === 'Atención'
+        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+        : 'border-rose-500/30 bg-rose-500/10 text-rose-300';
+
+  const statusBlocks = [
+    { title: 'Semáforo operativo', value: semaforoEstado, helper: 'Disponibilidad general de la plataforma', icon: <Activity size={16} /> },
+    { title: 'Estado datasets', value: `${datasetsActivos}/${governanceDatasets.length} validados`, helper: `${datasetsPendientes} pendientes · ${datasetsIncompletos} incompletos`, icon: <Database size={16} /> },
+    { title: 'Estado dashboard', value: 'Conectado', helper: `${governanceOfficialKpis.length} KPIs activos en monitoreo`, icon: <CheckCircle2 size={16} /> },
+    { title: 'Estado integración USD', value: 'Activo', helper: 'Conversión multi-moneda preparada para operación', icon: <Link2 size={16} /> },
+  ];
+
+  return (
+    <section className="space-y-6">
+      <article className="glass rounded-2xl p-5 shadow-premium">
+        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">DATOS · Estado del Sistema</p>
+        <h2 className="mt-2 text-2xl font-semibold text-zinc-100">Estado operativo y técnico de la plataforma</h2>
+        <p className="mt-2 max-w-4xl text-sm text-zinc-400">Panel consolidado para visualizar estado de datasets, validaciones, conectividad de módulos y roadmap vigente manteniendo el diseño enterprise actual.</p>
+      </article>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className={`glass rounded-2xl border p-4 shadow-premium ${semaforoClass}`}>
+          <p className="text-xs uppercase tracking-[0.16em]">Semáforo operativo</p>
+          <p className="mt-2 text-2xl font-semibold">{semaforoEstado}</p>
+        </article>
+        <article className="glass rounded-2xl p-4 shadow-premium"><p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Datasets activos</p><p className="mt-2 text-2xl font-semibold text-zinc-100">{datasetsActivos}</p></article>
+        <article className="glass rounded-2xl p-4 shadow-premium"><p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Última actualización</p><p className="mt-2 text-sm font-semibold text-zinc-100">{ultimaActualizacion}</p></article>
+        <article className="glass rounded-2xl p-4 shadow-premium"><p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Estado validación</p><p className="mt-2 text-sm font-semibold text-zinc-100">{estadoValidacion}</p></article>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <article className="glass rounded-2xl p-5 shadow-premium">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Monitoreo técnico</h3>
+          <div className="mt-3 grid gap-3">
+            {statusBlocks.map((block) => (
+              <div key={block.title} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+                <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.15em] text-zinc-500">{block.icon}{block.title}</p>
+                <p className="mt-1 text-sm font-semibold text-zinc-100">{block.value}</p>
+                <p className="text-xs text-zinc-400">{block.helper}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="glass rounded-2xl p-5 shadow-premium">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Estado funcional actual</h3>
+          <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+            <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">Módulos conectados: {sidebarSections.flatMap((section) => section.items).length} componentes de navegación activos.</li>
+            <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">KPIs activos: {governanceOfficialKpis.length} indicadores oficiales publicados.</li>
+            <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">Datasets pendientes: {datasetsPendientes} con revisión o carga pendiente.</li>
+            <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">Datasets incompletos: {datasetsIncompletos} con validación rechazada.</li>
+          </ul>
+        </article>
+      </section>
+
+      <article className="glass rounded-2xl p-5 shadow-premium">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">Roadmap actual</h3>
+        <ul className="mt-3 grid gap-2 text-sm text-zinc-300 md:grid-cols-2">
+          {governanceRoadmap.map((item) => (
+            <li key={item.hito} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+              <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">{item.trimestre} · {item.estado}</p>
+              <p className="mt-1">{item.hito}</p>
+            </li>
+          ))}
+        </ul>
+      </article>
+    </section>
+  );
+}
+
 export function DashboardContent({ activeId }: { activeId: string }) {
   if (activeId === 'region-argentina') return <CountryDashboard country="argentina" />;
   if (activeId === 'region-brasil') return <CountryDashboard country="brasil" />;
@@ -343,6 +424,7 @@ export function DashboardContent({ activeId }: { activeId: string }) {
   if (activeId === 'global-dashboard') return <GlobalDashboard />;
   if (activeId === 'data-center') return <DataCenterModule />;
   if (activeId === 'data-governance') return <DataGovernanceModule />;
+  if (activeId === 'system-status') return <SystemStatusModule />;
 
   return (
     <section className="space-y-4">
