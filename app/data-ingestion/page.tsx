@@ -108,7 +108,13 @@ export default function DataIngestionPage() {
     { label: 'Archivo leido', status: parseResult ? 'ok' : readError ? 'warning' : 'ok', detail: parseResult ? 'Se detectaron hojas Mapa cuentas y Hoja1.' : readError ?? 'Modo maqueta con datos de ejemplo.' },
     { label: 'Registros normalizados', status: 'ok', detail: `${parseResult?.records.length ?? demoRows.length} registros disponibles para preview.` },
     { label: 'Moneda', status: parseResult ? 'ok' : 'warning', detail: parseResult ? 'BRL aplicada por perfil Cash Flow Brasil.' : 'ARS aplicada por perfil demo.' },
-    { label: 'Control de saldos', status: balanceStatus, detail: parseResult ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.` : 'No aplica en modo demo.' },
+    {
+      label: 'Control de saldos',
+      status: balanceStatus,
+      detail: parseResult
+        ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.${balanceObservations.length ? ` Hay ${balanceObservations.length} mes para revisar: puede faltar detalle de movimientos, ser un saldo proyectado o requerir corregir y volver a subir el Excel.` : ''}`
+        : 'No aplica en modo demo.',
+    },
     { label: 'Advertencias', status: parseResult?.warnings.length ? 'warning' : 'ok', detail: parseResult?.warnings.length ? parseResult.warnings.join(' ') : 'Sin advertencias criticas.' },
   ];
 
