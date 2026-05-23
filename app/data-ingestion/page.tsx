@@ -99,7 +99,10 @@ export default function DataIngestionPage() {
 
   const balanceStatus = parseResult?.balanceChecks.every((check) => check.status === 'ok') ? 'ok' : parseResult ? 'warning' : 'ok';
   const balanceObservations = parseResult?.balanceChecks.filter((check) => check.status !== 'ok') ?? [];
-  const firstBalanceObservation = balanceObservations[0];
+  const largestBalanceObservation = balanceObservations.reduce(
+    (largest, check) => (Math.abs(check.difference) > Math.abs(largest?.difference ?? 0) ? check : largest),
+    balanceObservations[0],
+  );
   const sourceTotals = parseResult ? normalizedTotals : fallbackTotals;
   const netAmount = normalizedTotals.income - normalizedTotals.expense;
   const allMappingsApproved = approvedCount === profile.mappings.length;
@@ -113,8 +116,10 @@ export default function DataIngestionPage() {
       label: 'Control de saldos',
       status: balanceStatus,
       detail: parseResult
-        ? firstBalanceObservation
-          ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${firstBalanceObservation.period} no cierra por ${formatMoney(firstBalanceObservation.difference)} BRL. Ver detalle abajo.`
+        ? largestBalanceObservation
+          ? balanceObservations.length === 1
+            ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${largestBalanceObservation.period} no cierra por ${formatMoney(largestBalanceObservation.difference)} BRL. Ver detalle abajo.`
+            : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${balanceObservations.length} meses no cierran. Mayor diferencia: ${largestBalanceObservation.period}, ${formatMoney(largestBalanceObservation.difference)} BRL. Ver detalle abajo.`
           : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.`
         : 'No aplica en modo demo.',
     },
