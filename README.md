@@ -16,6 +16,14 @@ La primera estructura configurable esta en:
 - `config/businessProfiles.ts`: perfiles de negocio y modulos activos.
 - `docs/06-como-crear-un-modulo.md`: guia simple para transformar una necesidad en modulo.
 
+## Ingesta y normalizacion
+
+La plataforma incorpora el concepto de motor de ingesta para resolver formatos distintos por cliente. La IA puede sugerir mapeos, pero la publicacion de datos requiere validaciones y aprobacion humana.
+
+- `config/dataIngestion.ts`: modelo estandar, mapeos por cliente y estados de carga.
+- `docs/07-motor-ingesta-normalizacion.md`: explicacion del flujo de ingesta, IA, validaciones y aprobacion.
+- `business/_examples/cash-flow-normalization.md`: ejemplo de cash flows distintos llevados a un formato comun.
+
 La documentacion principal esta en:
 
 - `docs/00-guia-de-gobierno.md`
