@@ -6,6 +6,8 @@ Dashboard ejecutivo de inteligencia para genetica/agro (modo dark premium, datos
 
 Este repositorio evoluciona hacia una plataforma replicable de gestion: un modelo para crear dashboards por negocio con arquitectura, gobierno de datos, KPIs oficiales, modulos activables y roadmap de automatizacion.
 
+La meta es que funcione como una fabrica de herramientas de gestion: RRHH, finanzas, produccion, ventas, inventario, documentos o cualquier modulo que una empresa necesite. Cada modulo debe poder empezar simple, nutrirse de datos faciles de cargar y crecer hacia validaciones automaticas, actualizacion automatica e IA analitica.
+
 La documentacion principal esta en:
 
 - `docs/00-guia-de-gobierno.md`
@@ -13,7 +15,9 @@ La documentacion principal esta en:
 - `docs/02-metodologia-replicable.md`
 - `docs/03-modelo-de-extension.md`
 - `docs/04-roadmap-evolucion.md`
+- `docs/05-fabrica-de-herramientas-de-gestion.md`
 - `business/_template/business-blueprint.md`
+- `business/_examples/rrhh-blueprint.md`
 - `business/el-carmen/business-blueprint.md`
 
 ## Stack
