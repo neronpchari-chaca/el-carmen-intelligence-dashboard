@@ -2,34 +2,99 @@
 
 import { motion } from 'framer-motion';
 import {
-  BarChart, Bar, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, AreaChart, Area,
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import { incomeDistribution, kpis, pipelineVarietal, projectedGrowth, royaltiesEvolution, surfaceComparison } from '@/data/mockData';
+import { compareMetrics, countryKpis, kpisConsolidated, placeholdersByModule, projectedGrowth, royaltiesEvolution, surfaceComparison, type CountryCode } from '@/data/mockData';
 
-const colors = ['#145A43', '#1E7C59', '#63B58E', '#95D0B1'];
+const renderKpis = (items: { label: string; value: string; delta: string }[]) => (
+  <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    {items.map((kpi, index) => (
+      <motion.article
+        key={kpi.label}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.05, duration: 0.3 }}
+        className="glass rounded-2xl p-4 shadow-premium"
+      >
+        <p className="text-xs uppercase tracking-wider text-zinc-400">{kpi.label}</p>
+        <p className="mt-2 text-2xl font-semibold text-white">{kpi.value}</p>
+        <p className="mt-1 text-sm text-emerald-300">{kpi.delta}</p>
+      </motion.article>
+    ))}
+  </section>
+);
 
-export function DashboardContent() {
+function CountryDashboard({ country }: { country: CountryCode }) {
+  const label = country === 'argentina' ? 'Argentina' : 'Brasil';
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi, index) => (
-          <motion.article
-            key={kpi.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05, duration: 0.35 }}
-            className="glass rounded-2xl p-4 shadow-premium"
-          >
-            <p className="text-xs uppercase tracking-wider text-zinc-400">{kpi.label}</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{kpi.value}</p>
-            <p className="mt-1 text-sm text-emerald-300">{kpi.delta}</p>
-          </motion.article>
-        ))}
-      </section>
+      {renderKpis(countryKpis[country])}
+      <article className="glass h-80 rounded-2xl p-5 shadow-premium">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Evolución royalties — {label}</h3>
+        <ResponsiveContainer width="100%" height="88%">
+          <LineChart data={royaltiesEvolution}>
+            <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
+            <XAxis dataKey="year" stroke="#94a3b8" />
+            <YAxis stroke="#94a3b8" />
+            <Tooltip />
+            <Line type="monotone" dataKey={country} stroke="#63B58E" strokeWidth={2.8} />
+          </LineChart>
+        </ResponsiveContainer>
+      </article>
+    </div>
+  );
+}
 
+function CompareDashboard() {
+  return (
+    <section className="grid gap-6 xl:grid-cols-2">
+      <article className="glass h-96 rounded-2xl p-5 shadow-premium">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Comparativo AR-BR por métrica</h3>
+        <ResponsiveContainer width="100%" height="88%">
+          <BarChart data={compareMetrics}>
+            <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
+            <XAxis dataKey="metric" stroke="#94a3b8" tick={{ fontSize: 10 }} interval={0} angle={-10} height={72} />
+            <YAxis stroke="#94a3b8" />
+            <Tooltip />
+            <Bar dataKey="argentina" fill="#63B58E" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="brasil" fill="#1E7C59" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </article>
+      <article className="glass rounded-2xl p-5 shadow-premium">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Diferencias estratégicas</h3>
+        <div className="space-y-3">
+          {compareMetrics.map((metric) => (
+            <div key={metric.metric} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+              <p className="text-sm text-zinc-200">{metric.metric}</p>
+              <p className="mt-1 text-xs text-zinc-400">
+                AR: {metric.argentina} {metric.unit} · BR: {metric.brasil} {metric.unit}
+              </p>
+            </div>
+          ))}
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function GlobalDashboard() {
+  return (
+    <div className="space-y-6">
+      {renderKpis(kpisConsolidated)}
       <section className="grid gap-6 xl:grid-cols-2">
         <article className="glass h-80 rounded-2xl p-5 shadow-premium">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Evolución royalties (USD M)</h3>
+          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Royalties consolidados Argentina + Brasil (USD M)</h3>
           <ResponsiveContainer width="100%" height="88%">
             <LineChart data={royaltiesEvolution}>
               <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
@@ -55,41 +120,9 @@ export function DashboardContent() {
             </BarChart>
           </ResponsiveContainer>
         </article>
-
-        <article className="glass h-80 rounded-2xl p-5 shadow-premium">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Pipeline varietal (n° materiales)</h3>
-          <ResponsiveContainer width="100%" height="88%">
-            <BarChart data={pipelineVarietal} layout="vertical">
-              <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
-              <XAxis type="number" stroke="#94a3b8" />
-              <YAxis type="category" dataKey="stage" stroke="#94a3b8" width={110} />
-              <Tooltip />
-              <Bar dataKey="value" radius={[0, 8, 8, 0]}>
-                {pipelineVarietal.map((entry, i) => (
-                  <Cell key={entry.stage} fill={colors[i % colors.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </article>
-
-        <article className="glass h-80 rounded-2xl p-5 shadow-premium">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Distribución de ingresos 2026</h3>
-          <ResponsiveContainer width="100%" height="88%">
-            <PieChart>
-              <Pie data={incomeDistribution} dataKey="value" nameKey="name" innerRadius={55} outerRadius={100} paddingAngle={3}>
-                {incomeDistribution.map((entry, idx) => (
-                  <Cell key={entry.name} fill={colors[idx % colors.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </article>
       </section>
-
       <article className="glass h-80 rounded-2xl p-5 shadow-premium">
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Crecimiento proyectado (%)</h3>
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Crecimiento proyectado regional (%)</h3>
         <ResponsiveContainer width="100%" height="88%">
           <AreaChart data={projectedGrowth}>
             <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
@@ -102,15 +135,25 @@ export function DashboardContent() {
           </AreaChart>
         </ResponsiveContainer>
       </article>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {['Carga futura de Excel', 'Repositorio de PDFs', 'IA analítica ejecutiva', 'Autenticación multiusuario'].map((item) => (
-          <div key={item} className="glass rounded-2xl p-4 shadow-premium">
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Arquitectura preparada</p>
-            <p className="mt-2 text-base font-medium text-zinc-100">{item}</p>
-          </div>
-        ))}
-      </section>
     </div>
+  );
+}
+
+export function DashboardContent({ activeId }: { activeId: string }) {
+  if (activeId === 'region-argentina') return <CountryDashboard country="argentina" />;
+  if (activeId === 'region-brasil') return <CountryDashboard country="brasil" />;
+  if (activeId === 'region-compare') return <CompareDashboard />;
+  if (activeId === 'global-dashboard') return <GlobalDashboard />;
+
+  return (
+    <section className="space-y-4">
+      {placeholdersByModule.default.map((block) => (
+        <article key={block.title} className="glass rounded-2xl p-5 shadow-premium">
+          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Módulo en implementación</p>
+          <h3 className="mt-2 text-lg font-semibold text-zinc-100">{block.title}</h3>
+          <p className="mt-2 text-sm text-zinc-400">{block.description}</p>
+        </article>
+      ))}
+    </section>
   );
 }
