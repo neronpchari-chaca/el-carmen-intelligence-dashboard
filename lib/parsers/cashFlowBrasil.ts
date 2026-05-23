@@ -20,6 +20,8 @@ export type CashFlowBrasilBalanceCheck = {
   period: string;
   openingBalance: number;
   normalizedNet: number;
+  spreadsheetNet?: number;
+  netDifference?: number;
   closingBalance: number;
   calculatedClosingBalance: number;
   difference: number;
@@ -213,6 +215,7 @@ function buildBalanceChecks(
   const headerRow = findMonthHeaderRow(hoja1Rows);
   const openingMatch = findBalanceRow(hoja1Rows, 'saldo anterior');
   const closingMatch = findBalanceRow(hoja1Rows, 'saldo final');
+  const netMatch = findBalanceRow(hoja1Rows, 'neto del m') ?? findBalanceRow(hoja1Rows, 'neto del mes');
 
   if (!headerRow || !openingMatch || !closingMatch) {
     warnings.push('No se pudieron detectar saldos para validar saldo anterior + neto = saldo final.');
@@ -227,20 +230,26 @@ function buildBalanceChecks(
 
     const openingValueIndex = resolveBalanceValueIndex(openingMatch, index);
     const closingValueIndex = resolveBalanceValueIndex(closingMatch, index);
+    const netValueIndex = netMatch ? resolveBalanceValueIndex(netMatch, index) : undefined;
     const openingBalance = roundMoney(parseAmount(openingMatch.row[openingValueIndex]));
     const closingBalance = roundMoney(parseAmount(closingMatch.row[closingValueIndex]));
     const normalizedNet = roundMoney(netByPeriod.get(period) ?? 0);
+    const spreadsheetNet = netValueIndex === undefined ? undefined : roundMoney(parseAmount(netMatch?.row[netValueIndex]));
+    const netDifference = spreadsheetNet === undefined ? undefined : roundMoney(spreadsheetNet - normalizedNet);
     const calculatedClosingBalance = roundMoney(openingBalance + normalizedNet);
     const difference = roundMoney(closingBalance - calculatedClosingBalance);
+    const hasNetDifference = netDifference !== undefined && Math.abs(netDifference) > 0.01;
 
     return [{
       period,
       openingBalance,
       normalizedNet,
+      spreadsheetNet,
+      netDifference,
       closingBalance,
       calculatedClosingBalance,
       difference,
-      status: Math.abs(difference) <= 0.01 ? 'ok' as const : 'difference' as const,
+      status: Math.abs(difference) <= 0.01 && !hasNetDifference ? 'ok' as const : 'difference' as const,
     }];
   });
 }
