@@ -234,11 +234,12 @@ function buildBalanceChecks(
     const openingBalance = roundMoney(parseAmount(openingMatch.row[openingValueIndex]));
     const closingBalance = roundMoney(parseAmount(closingMatch.row[closingValueIndex]));
     const normalizedNet = roundMoney(netByPeriod.get(period) ?? 0);
-    const spreadsheetNet = netValueIndex === undefined ? undefined : roundMoney(parseAmount(netMatch?.row[netValueIndex]));
-    const netDifference = spreadsheetNet === undefined ? undefined : roundMoney(spreadsheetNet - normalizedNet);
+    const netFromBalanceMovement = roundMoney(closingBalance - openingBalance);
+    const spreadsheetNet = netValueIndex === undefined ? netFromBalanceMovement : roundMoney(parseAmount(netMatch?.row[netValueIndex]));
+    const netDifference = roundMoney(spreadsheetNet - normalizedNet);
     const calculatedClosingBalance = roundMoney(openingBalance + normalizedNet);
     const difference = roundMoney(closingBalance - calculatedClosingBalance);
-    const hasNetDifference = netDifference !== undefined && Math.abs(netDifference) > 0.01;
+    const hasNetDifference = Math.abs(netDifference) > 0.01;
 
     return [{
       period,
