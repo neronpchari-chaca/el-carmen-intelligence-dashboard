@@ -23,6 +23,7 @@ La plataforma incorpora el concepto de motor de ingesta para resolver formatos d
 - `config/dataIngestion.ts`: modelo estandar, mapeos por cliente y estados de carga.
 - `docs/07-motor-ingesta-normalizacion.md`: explicacion del flujo de ingesta, IA, validaciones y aprobacion.
 - `business/_examples/cash-flow-normalization.md`: ejemplo de cash flows distintos llevados a un formato comun.
+- `/data-ingestion`: maqueta visual del flujo de carga, mapeo, validacion, aprobacion y publicacion.
 
 La documentacion principal esta en:
 
