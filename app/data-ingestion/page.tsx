@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Bot, CheckCircle2, FileSpreadsheet, History, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { exampleCashFlowIngestionProfiles, ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
+import { parseCashFlowBrasil, type CashFlowBrasilCell, type CashFlowBrasilParseResult, type CashFlowBrasilRow } from '@/lib/parsers/cashFlowBrasil';
 
 const stageOrder: IngestionStage[] = [
   'received',
@@ -25,19 +26,11 @@ const stageLabels: Record<IngestionStage, string> = {
   published: 'Publicado',
 };
 
-const normalizedRows = [
-  { date: '2026-05-02', account: 'Banco 1', category: 'Cobranza', concept: 'Cobranza cliente X', income: 100000, expense: 0, currency: 'ARS' },
-  { date: '2026-05-06', account: 'Banco 1', category: 'Sueldos', concept: 'Pago sueldos planta', income: 0, expense: 52000, currency: 'ARS' },
-  { date: '2026-05-09', account: 'Banco 2', category: 'Proveedor', concept: 'Pago insumos', income: 0, expense: 38000, currency: 'ARS' },
-  { date: '2026-05-14', account: 'Banco 1', category: 'Cobranza', concept: 'Cobranza distribuidor', income: 64000, expense: 0, currency: 'ARS' },
-];
-
-const validationChecks = [
-  { label: 'Fechas validas', status: 'ok', detail: '4 de 4 registros con fecha valida.' },
-  { label: 'Importes numericos', status: 'ok', detail: 'Ingresos y egresos reconocidos correctamente.' },
-  { label: 'Moneda informada', status: 'warning', detail: 'El archivo no trae moneda; se aplica ARS por perfil del cliente.' },
-  { label: 'Categorias reconocidas', status: 'warning', detail: '1 categoria requiere confirmacion: Proveedor.' },
-  { label: 'Totales comparables contra archivo original', status: 'ok', detail: 'Diferencia total: 0.' },
+const demoRows = [
+  { period: 'may-26', account: 'Banco 1', group: 'Cobranza', concept: 'Cobranza cliente X', income: 100000, expense: 0, currency: 'ARS' },
+  { period: 'may-26', account: 'Banco 1', group: 'Sueldos', concept: 'Pago sueldos planta', income: 0, expense: 52000, currency: 'ARS' },
+  { period: 'may-26', account: 'Banco 2', group: 'Proveedor', concept: 'Pago insumos', income: 0, expense: 38000, currency: 'ARS' },
+  { period: 'may-26', account: 'Banco 1', group: 'Cobranza', concept: 'Cobranza distribuidor', income: 64000, expense: 0, currency: 'ARS' },
 ];
 
 const ingestionHistory = [
@@ -49,20 +42,27 @@ const ingestionHistory = [
 const auditTrail = [
   'Archivo recibido y conservado como fuente original.',
   'Mapeo sugerido por IA pendiente de aprobacion humana.',
-  'Moneda ARS aplicada por perfil del cliente.',
-  'Categoria Proveedor marcada para confirmacion antes de publicacion.',
+  'Moneda o pais aplicado por perfil del cliente cuando el archivo no lo informa.',
+  'Categorias y saldos se validan antes de publicacion.',
   'Publicacion requiere aprobacion de usuario responsable.',
 ];
 
-const sourceTotals = { income: 164000, expense: 90000 };
+const normalizeRows = (rows: unknown[][]): CashFlowBrasilRow[] =>
+  rows.map((row) => row.map((cell): CashFlowBrasilCell => (typeof cell === 'number' || typeof cell === 'string' ? cell : cell == null ? null : String(cell))));
+
+const fallbackTotals = { income: 164000, expense: 90000 };
 
 export default function DataIngestionPage() {
   const [stage, setStage] = useState<IngestionStage>('received');
   const [fileName, setFileName] = useState('cash_flow_cliente_demo_mayo.xlsx');
   const [approvedMappings, setApprovedMappings] = useState<Record<string, boolean>>({});
+  const [parseResult, setParseResult] = useState<CashFlowBrasilParseResult | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
 
   const schema = standardDatasetSchemas.find((item) => item.id === 'cash-flow') ?? standardDatasetSchemas[0];
-  const profile = exampleCashFlowIngestionProfiles.find((item) => item.id === 'cliente-demo-cashflow-bancos') ?? exampleCashFlowIngestionProfiles[0];
+  const profile = parseResult
+    ? exampleCashFlowIngestionProfiles.find((item) => item.id === 'el-carmen-cashflow-brasil-wide-months') ?? exampleCashFlowIngestionProfiles[0]
+    : exampleCashFlowIngestionProfiles.find((item) => item.id === 'cliente-demo-cashflow-bancos') ?? exampleCashFlowIngestionProfiles[0];
 
   const progressIndex = stageOrder.indexOf(stage);
   const approvedCount = useMemo(
@@ -70,17 +70,45 @@ export default function DataIngestionPage() {
     [approvedMappings, profile.mappings],
   );
 
-  const normalizedTotals = useMemo(
-    () => normalizedRows.reduce(
+  const displayRows = parseResult
+    ? parseResult.records.slice(0, 12).map((row) => ({
+        period: row.period,
+        account: row.type,
+        group: row.group,
+        concept: row.account,
+        income: row.income,
+        expense: row.expense,
+        currency: row.currency,
+      }))
+    : demoRows;
+
+  const normalizedTotals = useMemo(() => {
+    if (parseResult) {
+      return parseResult.monthlySummary.reduce(
+        (totals, row) => ({ income: totals.income + row.income, expense: totals.expense + row.expense }),
+        { income: 0, expense: 0 },
+      );
+    }
+
+    return demoRows.reduce(
       (totals, row) => ({ income: totals.income + row.income, expense: totals.expense + row.expense }),
       { income: 0, expense: 0 },
-    ),
-    [],
-  );
+    );
+  }, [parseResult]);
 
+  const balanceStatus = parseResult?.balanceChecks.every((check) => check.status === 'ok') ? 'ok' : parseResult ? 'warning' : 'ok';
+  const sourceTotals = parseResult ? normalizedTotals : fallbackTotals;
   const netAmount = normalizedTotals.income - normalizedTotals.expense;
   const allMappingsApproved = approvedCount === profile.mappings.length;
   const showPreview = stage !== 'received' && stage !== 'ai-mapping-suggested';
+
+  const validationChecks = [
+    { label: 'Archivo leido', status: parseResult ? 'ok' : readError ? 'warning' : 'ok', detail: parseResult ? 'Se detectaron hojas Mapa cuentas y Hoja1.' : readError ?? 'Modo maqueta con datos de ejemplo.' },
+    { label: 'Registros normalizados', status: 'ok', detail: `${parseResult?.records.length ?? demoRows.length} registros disponibles para preview.` },
+    { label: 'Moneda', status: parseResult ? 'ok' : 'warning', detail: parseResult ? 'BRL aplicada por perfil Cash Flow Brasil.' : 'ARS aplicada por perfil demo.' },
+    { label: 'Control de saldos', status: balanceStatus, detail: parseResult ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.` : 'No aplica en modo demo.' },
+    { label: 'Advertencias', status: parseResult?.warnings.length ? 'warning' : 'ok', detail: parseResult?.warnings.length ? parseResult.warnings.join(' ') : 'Sin advertencias criticas.' },
+  ];
 
   const simulateAiMapping = () => setStage('ai-mapping-suggested');
   const approveAllMappings = () => {
@@ -90,6 +118,36 @@ export default function DataIngestionPage() {
   const runValidation = () => setStage('pending-approval');
   const approveLoad = () => setStage('approved');
   const publishLoad = () => setStage('published');
+
+  const readExcelFile = async (file: File) => {
+    setFileName(file.name);
+    setStage('received');
+    setApprovedMappings({});
+    setParseResult(null);
+    setReadError(null);
+
+    try {
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const mapaSheet = workbook.Sheets['Mapa cuentas'];
+      const hoja1Sheet = workbook.Sheets['Hoja1'];
+
+      if (!mapaSheet || !hoja1Sheet) {
+        setReadError('El archivo no contiene las hojas esperadas: Mapa cuentas y Hoja1.');
+        return;
+      }
+
+      const mapaRows = normalizeRows(XLSX.utils.sheet_to_json(mapaSheet, { header: 1, raw: true, defval: null }) as unknown[][]);
+      const hoja1Rows = normalizeRows(XLSX.utils.sheet_to_json(hoja1Sheet, { header: 1, raw: true, defval: null }) as unknown[][]);
+      const result = parseCashFlowBrasil({ sourceFile: file.name, mapaCuentasRows: mapaRows, hoja1Rows });
+
+      setParseResult(result);
+      setStage('ai-mapping-suggested');
+    } catch (error) {
+      setReadError(error instanceof Error ? error.message : 'No se pudo leer el archivo Excel.');
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#050807] via-[#08110D] to-[#030404] px-5 py-6 text-zinc-100 md:px-8">
@@ -103,7 +161,7 @@ export default function DataIngestionPage() {
               <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">DATOS · Ingesta inteligente</p>
               <h1 className="mt-2 text-3xl font-semibold text-white">Flujo de carga, normalizacion y aprobacion</h1>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-400">
-                Maqueta del proceso para recibir archivos distintos por cliente, sugerir mapeos con IA, validar datos y publicar solo informacion aprobada.
+                Subi un Excel real de Cash Flow Brasil o usa el flujo demo. La plataforma lee hojas, normaliza registros y valida saldos antes de publicar.
               </p>
             </div>
             <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
@@ -138,15 +196,14 @@ export default function DataIngestionPage() {
             <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/45 px-4 py-8 text-center transition hover:border-emerald-500/50">
               <Upload size={26} className="text-emerald-300" />
               <span className="mt-3 text-sm font-medium text-zinc-200">Seleccionar archivo de cliente</span>
-              <span className="mt-1 text-xs text-zinc-500">XLSX o CSV · flujo simulado</span>
+              <span className="mt-1 text-xs text-zinc-500">XLSX o CSV · parser Brasil si detecta hojas esperadas</span>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv"
                 className="hidden"
                 onChange={(event) => {
-                  setFileName(event.target.files?.[0]?.name ?? fileName);
-                  setStage('received');
-                  setApprovedMappings({});
+                  const file = event.target.files?.[0];
+                  if (file) void readExcelFile(file);
                 }}
               />
             </label>
@@ -155,6 +212,7 @@ export default function DataIngestionPage() {
               <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Archivo actual</p>
               <p className="mt-1 font-medium text-zinc-100">{fileName}</p>
               <p className="mt-2 text-xs text-zinc-500">Perfil: {profile.sourceName}</p>
+              {readError ? <p className="mt-2 text-xs text-amber-300">{readError}</p> : null}
             </div>
 
             <div className="mt-4 grid gap-2">
@@ -246,7 +304,7 @@ export default function DataIngestionPage() {
                   <h2 className="mt-1 text-xl font-semibold text-white">Datos que entrarian al modelo estandar</h2>
                 </div>
                 <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-                  {normalizedRows.length} registros detectados
+                  {parseResult?.records.length ?? displayRows.length} registros detectados
                 </span>
               </div>
 
@@ -254,20 +312,20 @@ export default function DataIngestionPage() {
                 <table className="min-w-full text-sm text-zinc-300">
                   <thead className="text-xs uppercase tracking-[0.14em] text-zinc-500">
                     <tr>
-                      <th className="px-3 py-2 text-left">Fecha</th>
-                      <th className="px-3 py-2 text-left">Cuenta</th>
-                      <th className="px-3 py-2 text-left">Categoria</th>
+                      <th className="px-3 py-2 text-left">Periodo</th>
+                      <th className="px-3 py-2 text-left">Tipo/Cuenta</th>
+                      <th className="px-3 py-2 text-left">Grupo</th>
                       <th className="px-3 py-2 text-left">Concepto</th>
                       <th className="px-3 py-2 text-right">Ingreso</th>
                       <th className="px-3 py-2 text-right">Egreso</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {normalizedRows.map((row) => (
-                      <tr key={`${row.date}-${row.concept}`} className="border-t border-zinc-800">
-                        <td className="px-3 py-3">{row.date}</td>
+                    {displayRows.map((row) => (
+                      <tr key={`${row.period}-${row.concept}`} className="border-t border-zinc-800">
+                        <td className="px-3 py-3">{row.period}</td>
                         <td className="px-3 py-3">{row.account}</td>
-                        <td className="px-3 py-3 text-emerald-200">{row.category}</td>
+                        <td className="px-3 py-3 text-emerald-200">{row.group}</td>
                         <td className="px-3 py-3">{row.concept}</td>
                         <td className="px-3 py-3 text-right text-emerald-300">{row.income.toLocaleString('es-AR')}</td>
                         <td className="px-3 py-3 text-right text-rose-300">{row.expense.toLocaleString('es-AR')}</td>
@@ -293,7 +351,7 @@ export default function DataIngestionPage() {
                   </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
                     <p className="text-xs text-zinc-500">Neto a publicar</p>
-                    <p className="mt-1 text-lg font-semibold text-sky-300">{netAmount.toLocaleString('es-AR')} ARS</p>
+                    <p className="mt-1 text-lg font-semibold text-sky-300">{netAmount.toLocaleString('es-AR')} {parseResult ? 'BRL' : 'ARS'}</p>
                   </div>
                 </div>
               </article>
@@ -302,9 +360,9 @@ export default function DataIngestionPage() {
                 <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Impacto si se publica</p>
                 <h2 className="mt-1 text-xl font-semibold text-white">Resumen ejecutivo</h2>
                 <ul className="mt-4 space-y-2 text-sm text-zinc-300">
-                  <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">Se actualizaria Cash Flow Mayo 2026.</li>
-                  <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">El neto mensual subiria {netAmount.toLocaleString('es-AR')} ARS.</li>
-                  <li className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-amber-200">Queda pendiente confirmar categoria Proveedor.</li>
+                  <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">Se actualizaria Cash Flow desde archivo {fileName}.</li>
+                  <li className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">El neto detectado es {netAmount.toLocaleString('es-AR')} {parseResult ? 'BRL' : 'ARS'}.</li>
+                  <li className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-amber-200">La publicacion sigue bloqueada hasta aprobacion humana.</li>
                 </ul>
               </article>
             </section>
@@ -337,14 +395,9 @@ export default function DataIngestionPage() {
                   {ingestionHistory.map((load) => (
                     <tr key={load.version} className="border-t border-zinc-800">
                       <td className="px-3 py-3 text-emerald-200">{load.version}</td>
-                      <td className="px-3 py-3">
-                        <p>{load.file}</p>
-                        <p className="text-xs text-zinc-500">{load.date}</p>
-                      </td>
+                      <td className="px-3 py-3"><p>{load.file}</p><p className="text-xs text-zinc-500">{load.date}</p></td>
                       <td className="px-3 py-3">{load.owner}</td>
-                      <td className="px-3 py-3">
-                        <span className={`rounded-full border px-2 py-1 text-xs ${load.status === 'Publicado' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>{load.status}</span>
-                      </td>
+                      <td className="px-3 py-3"><span className={`rounded-full border px-2 py-1 text-xs ${load.status === 'Publicado' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>{load.status}</span></td>
                       <td className="px-3 py-3 text-right">{load.records}</td>
                       <td className="px-3 py-3 text-right text-sky-300">{load.net.toLocaleString('es-AR')}</td>
                     </tr>
@@ -358,9 +411,7 @@ export default function DataIngestionPage() {
             <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Trazabilidad</p>
             <h2 className="mt-1 text-xl font-semibold text-white">Rastro de control</h2>
             <ul className="mt-4 space-y-2 text-sm text-zinc-300">
-              {auditTrail.map((item) => (
-                <li key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">{item}</li>
-              ))}
+              {auditTrail.map((item) => <li key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">{item}</li>)}
             </ul>
           </article>
         </section>
