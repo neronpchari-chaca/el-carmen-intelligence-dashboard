@@ -49,6 +49,7 @@ const auditTrail = [
 
 type FileDiagnostic = {
   sheetNames: string[];
+  primarySheetName?: string;
   hasHoja1: boolean;
   hasMapaCuentas: boolean;
   hoja1Months: string[];
@@ -56,6 +57,15 @@ type FileDiagnostic = {
   missingInMapa: string[];
   status: 'ok' | 'warning';
   suggestion: string;
+};
+
+type TemporaryMapProposal = {
+  sheetName: string;
+  monthRange: string;
+  detectedMonths: string[];
+  detectedConcepts: Array<{ label: string; sampleAmount: number; suggestedType: 'Entrada' | 'Salida' | 'Revisar' }>;
+  suggestedFields: Array<{ source: string; target: string; confidence: number }>;
+  nextSteps: string[];
 };
 
 const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
@@ -68,22 +78,37 @@ const normalizeRows = (rows: unknown[][]): CashFlowBrasilRow[] =>
 const fallbackTotals = { income: 164000, expense: 90000 };
 const formatMoney = (value: number) => value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const normalizeText = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
 const normalizeMonth = (value: unknown): string | null => {
   if (typeof value === 'number' && Number.isFinite(value) && value > 30000 && value < 60000) {
     const date = new Date(EXCEL_EPOCH_UTC + value * 24 * 60 * 60 * 1000);
     return `${MONTH_ABBREVIATIONS[date.getUTCMonth()]}-${String(date.getUTCFullYear()).slice(-2)}`;
   }
 
-  const normalized = String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
+  const normalized = normalizeText(value)
     .replace(/\//g, '-')
     .replace(/\s+/g, '-')
     .replace('.', '');
 
   return MONTH_PATTERN.test(normalized) ? normalized : null;
+};
+
+const parseAmount = (value: CashFlowBrasilCell): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const text = String(value ?? '')
+    .replace(/R\$/gi, '')
+    .replace(/\s/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const extractMonths = (rows: CashFlowBrasilRow[]) => {
@@ -109,8 +134,58 @@ const formatMonthRange = (months: string[]) => {
   return `${months[0]} a ${months[months.length - 1]}`;
 };
 
-const buildFileDiagnostic = (sheetNames: string[], hoja1Rows?: CashFlowBrasilRow[], mapaRows?: CashFlowBrasilRow[]): FileDiagnostic => {
-  const hoja1Months = hoja1Rows ? extractMonths(hoja1Rows) : [];
+const findMonthHeaderRowIndex = (rows: CashFlowBrasilRow[]) => rows.findIndex((row) => row.filter((cell) => normalizeMonth(cell)).length >= 2);
+
+const buildTemporaryMapProposal = (sheetName: string, rows: CashFlowBrasilRow[]): TemporaryMapProposal | null => {
+  const headerIndex = findMonthHeaderRowIndex(rows);
+  if (headerIndex < 0) return null;
+
+  const detectedMonths = extractMonths([rows[headerIndex]]);
+  const monthIndexes = rows[headerIndex]
+    .map((cell, index) => ({ month: normalizeMonth(cell), index }))
+    .filter((item): item is { month: string; index: number } => Boolean(item.month));
+
+  const detectedConcepts = rows
+    .slice(headerIndex + 1)
+    .map((row) => {
+      const label = row
+        .slice(0, Math.max(monthIndexes[0]?.index ?? 1, 1))
+        .map((cell) => String(cell ?? '').trim())
+        .filter(Boolean)
+        .join(' / ');
+      const sampleAmount = monthIndexes.reduce((total, item) => total + parseAmount(row[item.index]), 0);
+      const suggestedType = sampleAmount > 0 ? 'Entrada' : sampleAmount < 0 ? 'Salida' : 'Revisar';
+      return { label, sampleAmount, suggestedType };
+    })
+    .filter((item) => item.label && item.sampleAmount !== 0)
+    .slice(0, 8);
+
+  return {
+    sheetName,
+    monthRange: formatMonthRange(detectedMonths),
+    detectedMonths,
+    detectedConcepts,
+    suggestedFields: [
+      { source: 'Primera columna con texto', target: 'Cuenta o concepto', confidence: 0.72 },
+      { source: 'Columnas con meses', target: 'Periodo e importe', confidence: 0.9 },
+      { source: 'Signo del importe', target: 'Entrada / Salida', confidence: 0.78 },
+    ],
+    nextSteps: [
+      'Revisar si los conceptos detectados representan cuentas reales.',
+      'Confirmar si importes positivos son entradas y negativos son salidas.',
+      'Aprobar el mapa temporal antes de validar saldos o publicar.',
+    ],
+  };
+};
+
+const buildFileDiagnostic = (
+  sheetNames: string[],
+  hoja1Rows?: CashFlowBrasilRow[],
+  mapaRows?: CashFlowBrasilRow[],
+  primarySheetName?: string,
+  primaryRows?: CashFlowBrasilRow[],
+): FileDiagnostic => {
+  const hoja1Months = hoja1Rows ? extractMonths(hoja1Rows) : primaryRows ? extractMonths(primaryRows) : [];
   const mapaMonths = mapaRows ? extractMonths(mapaRows.slice(0, 1)) : [];
   const missingInMapa = hoja1Months.filter((month) => !mapaMonths.includes(month));
   const hasHoja1 = Boolean(hoja1Rows);
@@ -119,19 +194,23 @@ const buildFileDiagnostic = (sheetNames: string[], hoja1Rows?: CashFlowBrasilRow
   if (!hasMapaCuentas) {
     return {
       sheetNames,
+      primarySheetName,
       hasHoja1,
       hasMapaCuentas,
       hoja1Months,
       mapaMonths,
       missingInMapa: [],
       status: 'warning',
-      suggestion: 'No hay Mapa cuentas. La plataforma deberia crear un mapa temporal desde la hoja principal antes de cargar.',
+      suggestion: primaryRows
+        ? `No hay Mapa cuentas. Se puede proponer un mapa temporal usando la hoja ${primarySheetName}.`
+        : 'No hay Mapa cuentas y no se encontro una hoja principal clara.',
     };
   }
 
   if (missingInMapa.length > 0) {
     return {
       sheetNames,
+      primarySheetName,
       hasHoja1,
       hasMapaCuentas,
       hoja1Months,
@@ -144,6 +223,7 @@ const buildFileDiagnostic = (sheetNames: string[], hoja1Rows?: CashFlowBrasilRow
 
   return {
     sheetNames,
+    primarySheetName,
     hasHoja1,
     hasMapaCuentas,
     hoja1Months,
@@ -161,6 +241,7 @@ export default function DataIngestionPage() {
   const [parseResult, setParseResult] = useState<CashFlowBrasilParseResult | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [fileDiagnostic, setFileDiagnostic] = useState<FileDiagnostic | null>(null);
+  const [temporaryMapProposal, setTemporaryMapProposal] = useState<TemporaryMapProposal | null>(null);
 
   const schema = standardDatasetSchemas.find((item) => item.id === 'cash-flow') ?? standardDatasetSchemas[0];
   const profile = parseResult
@@ -209,23 +290,34 @@ export default function DataIngestionPage() {
   const netAmount = normalizedTotals.income - normalizedTotals.expense;
   const allMappingsApproved = approvedCount === profile.mappings.length;
   const showPreview = Boolean(parseResult) || (stage !== 'received' && stage !== 'ai-mapping-suggested');
+  const hasTemporaryFlow = Boolean(temporaryMapProposal && !parseResult);
 
   const validationChecks = [
-    { label: 'Archivo leido', status: parseResult ? 'ok' : readError ? 'warning' : 'ok', detail: parseResult ? 'Se detectaron hojas Mapa cuentas y Hoja1.' : readError ?? 'Modo maqueta con datos de ejemplo.' },
-    { label: 'Registros normalizados', status: 'ok', detail: `${parseResult?.records.length ?? demoRows.length} registros disponibles para preview.` },
-    { label: 'Moneda', status: parseResult ? 'ok' : 'warning', detail: parseResult ? 'BRL aplicada por perfil Cash Flow Brasil.' : 'ARS aplicada por perfil demo.' },
+    {
+      label: 'Archivo leido',
+      status: parseResult || temporaryMapProposal ? 'ok' : readError ? 'warning' : 'ok',
+      detail: parseResult
+        ? 'Se detectaron hojas Mapa cuentas y Hoja1.'
+        : temporaryMapProposal
+          ? `Se detecto una hoja principal: ${temporaryMapProposal.sheetName}.`
+          : readError ?? 'Modo maqueta con datos de ejemplo.',
+    },
+    { label: 'Registros normalizados', status: hasTemporaryFlow ? 'warning' : 'ok', detail: hasTemporaryFlow ? 'Pendiente hasta aprobar mapa temporal.' : `${parseResult?.records.length ?? demoRows.length} registros disponibles para preview.` },
+    { label: 'Moneda', status: parseResult ? 'ok' : 'warning', detail: parseResult ? 'BRL aplicada por perfil Cash Flow Brasil.' : 'Pendiente de confirmar por perfil del cliente.' },
     {
       label: 'Control de saldos',
-      status: balanceStatus,
-      detail: parseResult
-        ? largestBalanceObservation
-          ? balanceObservations.length === 1
-            ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${largestBalanceObservation.period} no cierra por ${formatMoney(largestBalanceObservation.difference)} BRL. Ver detalle abajo.`
-            : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${balanceObservations.length} meses no cierran. Mayor diferencia: ${largestBalanceObservation.period}, ${formatMoney(largestBalanceObservation.difference)} BRL. Ver detalle abajo.`
-          : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.`
-        : 'No aplica en modo demo.',
+      status: hasTemporaryFlow ? 'warning' : balanceStatus,
+      detail: hasTemporaryFlow
+        ? 'Todavia no se valida saldo. Primero hay que aprobar el mapa temporal.'
+        : parseResult
+          ? largestBalanceObservation
+            ? balanceObservations.length === 1
+              ? `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${largestBalanceObservation.period} no cierra por ${formatMoney(largestBalanceObservation.difference)} BRL. Ver detalle abajo.`
+              : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados. ${balanceObservations.length} meses no cierran. Mayor diferencia: ${largestBalanceObservation.period}, ${formatMoney(largestBalanceObservation.difference)} BRL. Ver detalle abajo.`
+            : `${parseResult.balanceChecks.filter((check) => check.status === 'ok').length}/${parseResult.balanceChecks.length} meses conciliados.`
+          : 'No aplica en modo demo.',
     },
-    { label: 'Advertencias', status: parseResult?.warnings.length ? 'warning' : 'ok', detail: parseResult?.warnings.length ? parseResult.warnings.join(' ') : 'Sin advertencias criticas.' },
+    { label: 'Advertencias', status: parseResult?.warnings.length || hasTemporaryFlow ? 'warning' : 'ok', detail: parseResult?.warnings.length ? parseResult.warnings.join(' ') : hasTemporaryFlow ? 'Carga bloqueada hasta revisar la propuesta.' : 'Sin advertencias criticas.' },
   ];
 
   const simulateAiMapping = () => setStage('ai-mapping-suggested');
@@ -236,6 +328,7 @@ export default function DataIngestionPage() {
   const runValidation = () => setStage('pending-approval');
   const approveLoad = () => setStage('approved');
   const publishLoad = () => setStage('published');
+  const markTemporaryMapReviewed = () => setStage('mapped');
 
   const readExcelFile = async (file: File) => {
     setFileName(file.name);
@@ -244,17 +337,31 @@ export default function DataIngestionPage() {
     setParseResult(null);
     setReadError(null);
     setFileDiagnostic(null);
+    setTemporaryMapProposal(null);
 
     try {
       const XLSX = await import('xlsx');
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const firstSheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
       const mapaSheet = workbook.Sheets['Mapa cuentas'];
       const hoja1Sheet = workbook.Sheets['Hoja1'];
+      const firstRows = firstSheet ? normalizeRows(XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: true, defval: null }) as unknown[][]) : undefined;
       const mapaRows = mapaSheet ? normalizeRows(XLSX.utils.sheet_to_json(mapaSheet, { header: 1, raw: true, defval: null }) as unknown[][]) : undefined;
       const hoja1Rows = hoja1Sheet ? normalizeRows(XLSX.utils.sheet_to_json(hoja1Sheet, { header: 1, raw: true, defval: null }) as unknown[][]) : undefined;
+      const primaryRows = hoja1Rows ?? firstRows;
+      const primarySheetName = hoja1Rows ? 'Hoja1' : firstSheetName;
 
-      setFileDiagnostic(buildFileDiagnostic(workbook.SheetNames, hoja1Rows, mapaRows));
+      setFileDiagnostic(buildFileDiagnostic(workbook.SheetNames, hoja1Rows, mapaRows, primarySheetName, primaryRows));
+
+      if (!mapaRows && primaryRows && primarySheetName) {
+        const proposal = buildTemporaryMapProposal(primarySheetName, primaryRows);
+        setTemporaryMapProposal(proposal);
+        setReadError(proposal ? 'No se publica todavia: primero revisa el mapa temporal propuesto.' : 'No se pudo armar un mapa temporal con esta hoja.');
+        setStage('ai-mapping-suggested');
+        return;
+      }
 
       if (!mapaRows || !hoja1Rows) {
         setReadError('El archivo no contiene las hojas esperadas: Mapa cuentas y Hoja1.');
@@ -317,7 +424,7 @@ export default function DataIngestionPage() {
             <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-950/45 px-4 py-8 text-center transition hover:border-emerald-500/50">
               <Upload size={26} className="text-emerald-300" />
               <span className="mt-3 text-sm font-medium text-zinc-200">Seleccionar archivo de cliente</span>
-              <span className="mt-1 text-xs text-zinc-500">XLSX o CSV · parser Brasil si detecta hojas esperadas</span>
+              <span className="mt-1 text-xs text-zinc-500">XLSX o CSV · con mapa o una hoja principal</span>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv"
@@ -340,13 +447,13 @@ export default function DataIngestionPage() {
               <button onClick={simulateAiMapping} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400">
                 <Wand2 size={16} /> Sugerir mapeo con IA
               </button>
-              <button onClick={runValidation} disabled={!allMappingsApproved} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-40">
+              <button onClick={runValidation} disabled={!allMappingsApproved || hasTemporaryFlow} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-40">
                 <ShieldCheck size={16} /> Validar datos
               </button>
               <button onClick={approveLoad} disabled={stage !== 'pending-approval'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-40">
                 <CheckCircle2 size={16} /> Aprobar carga
               </button>
-              <button onClick={publishLoad} disabled={stage !== 'approved'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40">
+              <button onClick={publishLoad} disabled={stage !== 'approved' || hasTemporaryFlow} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40">
                 Publicar en dashboard
               </button>
             </div>
@@ -371,10 +478,10 @@ export default function DataIngestionPage() {
                   </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
                     <p className="text-xs text-zinc-500">Tipo de lectura</p>
-                    <p className="mt-1 text-zinc-100">{fileDiagnostic.hasMapaCuentas ? 'Con mapa de cuentas' : 'Sin mapa: requiere mapa temporal'}</p>
+                    <p className="mt-1 text-zinc-100">{fileDiagnostic.hasMapaCuentas ? 'Con mapa de cuentas' : `Sin mapa: usar ${fileDiagnostic.primarySheetName ?? 'hoja principal'}`}</p>
                   </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
-                    <p className="text-xs text-zinc-500">Meses en Hoja1</p>
+                    <p className="text-xs text-zinc-500">Meses en hoja principal</p>
                     <p className="mt-1 text-zinc-100">{formatMonthRange(fileDiagnostic.hoja1Months)}</p>
                   </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
@@ -385,6 +492,75 @@ export default function DataIngestionPage() {
                 <div className={`mt-3 rounded-xl border p-3 text-sm ${fileDiagnostic.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/25 bg-amber-500/10 text-amber-200'}`}>
                   {fileDiagnostic.suggestion}
                 </div>
+              </article>
+            ) : null}
+
+            {temporaryMapProposal ? (
+              <article className="glass rounded-2xl p-5 shadow-premium">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Archivo sin mapa</p>
+                    <h2 className="mt-1 text-xl font-semibold text-white">Mapa temporal propuesto</h2>
+                  </div>
+                  <span className="w-fit rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs text-violet-200">Requiere revision</span>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Hoja usada</p>
+                    <p className="mt-1 text-zinc-100">{temporaryMapProposal.sheetName}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Meses detectados</p>
+                    <p className="mt-1 text-zinc-100">{temporaryMapProposal.monthRange}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                    <p className="text-xs text-zinc-500">Conceptos de muestra</p>
+                    <p className="mt-1 text-zinc-100">{temporaryMapProposal.detectedConcepts.length}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-sm text-zinc-300">
+                    <thead className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Concepto detectado</th>
+                        <th className="px-3 py-2 text-right">Importe muestra</th>
+                        <th className="px-3 py-2 text-left">Lectura sugerida</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {temporaryMapProposal.detectedConcepts.map((item) => (
+                        <tr key={`${item.label}-${item.sampleAmount}`} className="border-t border-zinc-800">
+                          <td className="px-3 py-3">{item.label}</td>
+                          <td className="px-3 py-3 text-right">{formatMoney(item.sampleAmount)}</td>
+                          <td className="px-3 py-3 text-emerald-200">{item.suggestedType}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {temporaryMapProposal.suggestedFields.map((field) => (
+                    <div key={field.source} className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3 text-sm text-zinc-300">
+                      <p className="font-medium text-zinc-100">{field.source}</p>
+                      <p className="mt-1 text-xs text-zinc-400">Se usaria como {field.target}.</p>
+                      <p className="mt-2 text-xs text-emerald-300">Confianza {Math.round(field.confidence * 100)}%</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-100">
+                  <p className="font-medium">Como seguir</p>
+                  <ul className="mt-2 space-y-1">
+                    {temporaryMapProposal.nextSteps.map((step) => <li key={step}>{step}</li>)}
+                  </ul>
+                </div>
+
+                <button onClick={markTemporaryMapReviewed} className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20">
+                  Marcar propuesta revisada
+                </button>
               </article>
             ) : null}
 
