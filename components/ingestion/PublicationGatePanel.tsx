@@ -1,18 +1,18 @@
 'use client';
 
-import type { PublicationGateResult } from '@/lib/ingestion/publicationGate';
+import type { PublicationGateCheck, PublicationGateResult } from '@/lib/ingestion/publicationGate';
 
 type PublicationGatePanelProps = {
   gate: PublicationGateResult;
 };
 
-const statusStyles = {
+const statusStyles: Record<PublicationGateCheck['status'], string> = {
   ok: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200',
   pending: 'border-amber-500/25 bg-amber-500/10 text-amber-200',
   blocked: 'border-rose-500/25 bg-rose-500/10 text-rose-200',
 };
 
-const statusLabels = {
+const statusLabels: Record<PublicationGateCheck['status'], string> = {
   ok: 'OK',
   pending: 'Pendiente',
   blocked: 'Bloqueado',
