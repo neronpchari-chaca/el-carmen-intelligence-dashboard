@@ -12,10 +12,11 @@ type WorkbookLike = {
   Sheets: Record<string, WorksheetLike>;
 };
 
-type SheetToJson = <T>(sheet: WorksheetLike, options: { header: 1; raw: true; defval: null }) => T[];
-
-type XlsxUtilsLike = {
-  sheet_to_json: SheetToJson;
+type XlsxModuleLike = {
+  read: (data: ArrayBuffer, options: { type: 'array' }) => WorkbookLike;
+  utils: {
+    sheet_to_json: (sheet: WorksheetLike, options: { header: 1; raw: true; defval: null }) => unknown[];
+  };
 };
 
 const normalizeRows = (rows: unknown[][]): GenericCashFlowRow[] =>
@@ -31,12 +32,20 @@ const chooseBestCashFlow = (candidates: GenericCashFlowNormalizeResult[]) => {
   })[0] ?? null;
 };
 
-export function detectCashFlowWorkbook(workbook: WorkbookLike, utils: XlsxUtilsLike): GenericCashFlowNormalizeResult | null {
+export function detectCashFlowWorkbook(workbook: WorkbookLike, xlsx: XlsxModuleLike): GenericCashFlowNormalizeResult | null {
   const candidates = workbook.SheetNames.map((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
-    const rows = normalizeRows(utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null }));
+    const rows = normalizeRows(xlsx.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null }) as unknown[][]);
     return normalizeGenericWideCashFlow(sheetName, rows);
   });
 
   return chooseBestCashFlow(candidates);
+}
+
+export async function detectCashFlowFile(file: File): Promise<GenericCashFlowNormalizeResult | null> {
+  const XLSX = (await import('xlsx')) as XlsxModuleLike;
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: 'array' });
+
+  return detectCashFlowWorkbook(workbook, XLSX);
 }
