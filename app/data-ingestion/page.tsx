@@ -4,8 +4,12 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
+import { IngestionIssuesPanel } from '@/components/ingestion/IngestionIssuesPanel';
+import { IngestionTotalsPanel } from '@/components/ingestion/IngestionTotalsPanel';
+import { IngestionValidationPanel, type IngestionValidationCheck } from '@/components/ingestion/IngestionValidationPanel';
+import { NormalizedPreviewTable } from '@/components/ingestion/NormalizedPreviewTable';
 import { detectCashFlowFile } from '@/lib/ingestion/detectCashFlowWorkbook';
-import type { GenericCashFlowNormalizeResult } from '@/lib/parsers/genericWideCashFlow';
+import type { GenericCashFlowNormalizeResult, GenericCashFlowRecord } from '@/lib/parsers/genericWideCashFlow';
 
 const stageOrder: IngestionStage[] = [
   'received',
@@ -27,11 +31,11 @@ const stageLabels: Record<IngestionStage, string> = {
   published: 'Publicado',
 };
 
-const demoRows = [
-  { period: 'may-26', concept: 'Cobranza cliente X', type: 'Entrada', income: 100000, expense: 0, net: 100000 },
-  { period: 'may-26', concept: 'Pago sueldos planta', type: 'Salida', income: 0, expense: 52000, net: -52000 },
-  { period: 'may-26', concept: 'Pago insumos', type: 'Salida', income: 0, expense: 38000, net: -38000 },
-  { period: 'may-26', concept: 'Cobranza distribuidor', type: 'Entrada', income: 64000, expense: 0, net: 64000 },
+const demoRows: GenericCashFlowRecord[] = [
+  { period: 'may-26', concept: 'Cobranza cliente X', type: 'Entrada', income: 100000, expense: 0, net: 100000, sourceSheet: 'Demo', sourceRow: 0 },
+  { period: 'may-26', concept: 'Pago sueldos planta', type: 'Salida', income: 0, expense: 52000, net: -52000, sourceSheet: 'Demo', sourceRow: 0 },
+  { period: 'may-26', concept: 'Pago insumos', type: 'Salida', income: 0, expense: 38000, net: -38000, sourceSheet: 'Demo', sourceRow: 0 },
+  { period: 'may-26', concept: 'Cobranza distribuidor', type: 'Entrada', income: 64000, expense: 0, net: 64000, sourceSheet: 'Demo', sourceRow: 0 },
 ];
 
 type FileDiagnostic = {
@@ -41,14 +45,6 @@ type FileDiagnostic = {
   records: number;
   monthRange: string;
 };
-
-type ValidationCheck = {
-  label: string;
-  status: 'ok' | 'warning';
-  detail: string;
-};
-
-const formatMoney = (value: number) => value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DataIngestionPage() {
   const [stage, setStage] = useState<IngestionStage>('received');
@@ -60,10 +56,7 @@ export default function DataIngestionPage() {
 
   const schema = standardDatasetSchemas.find((item) => item.id === 'cash-flow') ?? standardDatasetSchemas[0];
   const progressIndex = stageOrder.indexOf(stage);
-
-  const displayRows = parseResult
-    ? parseResult.records.slice(0, 12)
-    : demoRows.map((row) => ({ ...row, sourceSheet: 'Demo', sourceRow: 0, type: row.type as 'Entrada' | 'Salida' | 'Revisar' }));
+  const displayRows = parseResult ? parseResult.records.slice(0, 12) : demoRows;
 
   const normalizedTotals = useMemo(() => {
     if (parseResult) {
@@ -83,7 +76,7 @@ export default function DataIngestionPage() {
   const canValidate = Boolean(parseResult && approvedReading && parseResult.records.length > 0);
   const showPreview = Boolean(parseResult) || (stage !== 'received' && stage !== 'ai-mapping-suggested');
 
-  const validationChecks: ValidationCheck[] = [
+  const validationChecks: IngestionValidationCheck[] = [
     {
       label: 'Archivo leido',
       status: fileDiagnostic || readError ? (readError ? 'warning' : 'ok') : 'ok',
@@ -257,96 +250,16 @@ export default function DataIngestionPage() {
               </article>
             ) : null}
 
-            <article className="glass rounded-2xl p-5 shadow-premium">
-              <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Control antes de publicar</p>
-              <h2 className="mt-1 text-xl font-semibold text-white">Validaciones</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {validationChecks.map((check) => (
-                  <div key={check.label} className={`rounded-xl border p-3 text-sm ${check.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/25 bg-amber-500/10 text-amber-200'}`}>
-                    <p className="font-medium">{check.label}</p>
-                    <p className="mt-1 text-xs opacity-80">{check.detail}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-sm text-zinc-400">Estado actual: {ingestionStages[stage]}</p>
-            </article>
-
-            {issues.length ? (
-              <article className="glass rounded-2xl p-5 shadow-premium">
-                <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Para resolver</p>
-                <h2 className="mt-1 text-xl font-semibold text-white">Observaciones detectadas</h2>
-                <div className="mt-4 grid gap-2">
-                  {issues.map((issue) => (
-                    <div key={`${issue.group}-${issue.title}`} className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-100">
-                      <p className="font-medium">{issue.title} ({issue.count})</p>
-                      <p className="mt-1 text-xs opacity-80">{issue.detail}</p>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ) : null}
+            <IngestionValidationPanel checks={validationChecks} currentStage={ingestionStages[stage]} />
+            <IngestionIssuesPanel issues={issues} />
           </section>
         </section>
 
         {showPreview ? (
           <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <article className="glass rounded-2xl p-5 shadow-premium">
-              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Preview normalizado</p>
-                  <h2 className="mt-1 text-xl font-semibold text-white">Datos que entrarian al modelo estandar</h2>
-                </div>
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-                  {parseResult?.records.length ?? displayRows.length} movimientos
-                </span>
-              </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm text-zinc-300">
-                  <thead className="text-xs uppercase tracking-[0.14em] text-zinc-500">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Periodo</th>
-                      <th className="px-3 py-2 text-left">Tipo</th>
-                      <th className="px-3 py-2 text-left">Concepto</th>
-                      <th className="px-3 py-2 text-right">Ingreso</th>
-                      <th className="px-3 py-2 text-right">Egreso</th>
-                      <th className="px-3 py-2 text-right">Neto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayRows.map((row) => (
-                      <tr key={`${row.period}-${row.concept}-${row.net}`} className="border-t border-zinc-800">
-                        <td className="px-3 py-3">{row.period}</td>
-                        <td className="px-3 py-3 text-emerald-200">{row.type}</td>
-                        <td className="px-3 py-3">{row.concept}</td>
-                        <td className="px-3 py-3 text-right text-emerald-300">{formatMoney(row.income)}</td>
-                        <td className="px-3 py-3 text-right text-rose-300">{formatMoney(row.expense)}</td>
-                        <td className="px-3 py-3 text-right text-sky-300">{formatMoney(row.net)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
-
+            <NormalizedPreviewTable rows={displayRows} totalRecords={parseResult?.records.length ?? displayRows.length} />
             <section className="space-y-6">
-              <article className="glass rounded-2xl p-5 shadow-premium">
-                <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Resumen</p>
-                <h2 className="mt-1 text-xl font-semibold text-white">Totales detectados</h2>
-                <div className="mt-4 grid gap-3">
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
-                    <p className="text-xs text-zinc-500">Ingresos</p>
-                    <p className="mt-1 text-sm font-semibold text-emerald-300">{formatMoney(normalizedTotals.income)}</p>
-                  </div>
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
-                    <p className="text-xs text-zinc-500">Egresos</p>
-                    <p className="mt-1 text-sm font-semibold text-rose-300">{formatMoney(normalizedTotals.expense)}</p>
-                  </div>
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
-                    <p className="text-xs text-zinc-500">Neto</p>
-                    <p className="mt-1 text-lg font-semibold text-sky-300">{formatMoney(normalizedTotals.net)}</p>
-                  </div>
-                </div>
-              </article>
+              <IngestionTotalsPanel totals={normalizedTotals} />
             </section>
           </section>
         ) : null}
