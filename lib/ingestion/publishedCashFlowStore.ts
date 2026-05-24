@@ -6,6 +6,7 @@ export type PublishedCashFlowSnapshot = {
   monthRange: string;
   recordCount: number;
   monthlySummary: GenericCashFlowNormalizeResult['monthlySummary'];
+  records?: GenericCashFlowRecord[];
   previewRows: GenericCashFlowRecord[];
   issues: GenericCashFlowIssue[];
   totals: {
