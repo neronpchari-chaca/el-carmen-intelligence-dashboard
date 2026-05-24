@@ -31,6 +31,10 @@ export type GenericCashFlowNormalizeResult = {
     expense: number;
     net: number;
   }>;
+  balanceSummary: Array<{
+    period: string;
+    closingBalance: number;
+  }>;
   issues: GenericCashFlowIssue[];
 };
 
@@ -108,6 +112,8 @@ const detectSection = (concept: string): GenericCashFlowRecord['type'] | null =>
   return null;
 };
 
+const isClosingBalanceRow = (concept: string) => /\bsaldo\s+final\b/.test(normalizeText(concept));
+
 const isBalanceOrTotalRow = (concept: string) => {
   const normalized = normalizeText(concept);
 
@@ -173,6 +179,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       monthRange: 'No detectado',
       records: [],
       monthlySummary: [],
+      balanceSummary: [],
       issues: [
         {
           group: 'estructura',
@@ -186,6 +193,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
 
   const firstMonthIndex = header.monthIndexes[0]?.index ?? 1;
   const records: GenericCashFlowRecord[] = [];
+  const balanceSummary: GenericCashFlowNormalizeResult['balanceSummary'] = [];
   let currentSection: GenericCashFlowRecord['type'] | null = null;
 
   rows.slice(header.rowIndex + 1).forEach((row, offset) => {
@@ -208,6 +216,13 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     const section = detectSection(concept);
     if (section && !concept.includes('/')) {
       currentSection = section;
+      return;
+    }
+
+    if (isClosingBalanceRow(concept)) {
+      header.monthIndexes.forEach(({ period, index }) => {
+        balanceSummary.push({ period, closingBalance: roundMoney(parseAmount(row[index])) });
+      });
       return;
     }
 
@@ -252,6 +267,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     monthRange: formatMonthRange(header.monthIndexes.map((item) => item.period)),
     records,
     monthlySummary: Array.from(summaryByPeriod.values()),
+    balanceSummary,
     issues,
   };
 }
