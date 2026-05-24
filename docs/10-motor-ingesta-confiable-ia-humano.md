@@ -58,6 +58,35 @@ Reglas minimas:
 - Si no existe saldo final, caja acumulada se calcula desde movimientos y se aclara.
 - Si la confianza es baja, se bloquea la publicacion.
 
+## Cash Flow v2: reglas contra doble conteo
+
+El motor no debe asumir que toda fila o columna con numeros es un movimiento. Primero clasifica la estructura.
+
+Columnas:
+
+- Se cargan solo columnas mensuales reales, por ejemplo `mar-26`, `abr-26`, `may-26`.
+- Columnas como `Total periodo`, `Total`, `Subtotal`, `Acumulado`, `Promedio`, `Variacion` o `%` no se cargan como meses.
+- Si existe una columna de total, se usa como control contra la suma de meses, no como movimiento adicional.
+
+Filas:
+
+- `ENTRADAS` y `SALIDAS` son encabezados de seccion.
+- `TOTAL ENTRADAS`, `TOTAL SALIDAS` y `NETO DEL MES` son controles.
+- `SALDO ANTERIOR`, `SALDO FINAL` y acumulados son saldos de control.
+- Filas agrupadoras, por ejemplo `Financiero / prestamos`, `Estructura` o `Royalties`, no se cargan si debajo tienen filas detalle.
+- Filas detalle, por ejemplo `Credito Aporte`, `Capital Giro`, `INSS` o `Energia`, son movimientos.
+
+Validaciones por mes:
+
+- Suma de entradas detalle = `TOTAL ENTRADAS`, si existe.
+- Suma de salidas detalle = `TOTAL SALIDAS`, si existe.
+- Entradas - salidas = `NETO DEL MES`, si existe.
+- Saldo anterior + neto = `SALDO FINAL`, si existen ambos saldos.
+
+Si una validacion existe y cierra, aumenta la confianza. Si existe y no cierra, se informa la diferencia y no se publica hasta revisar.
+
+Si el archivo no trae totales o saldos, el motor puede calcularlos, pero debe marcar que son valores generados por el sistema y no validados contra el archivo original.
+
 ## Evolucion futura
 
 La siguiente etapa puede incorporar propuestas asistidas por IA:
