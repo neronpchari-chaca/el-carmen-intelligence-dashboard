@@ -36,17 +36,30 @@ export function Sidebar({ activeId, onSelect }: SidebarProps) {
               </p>
               <div className="space-y-1">
                 {section.items.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => onSelect(item.id, item.label, section.title)}
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${
-                      activeId === item.id
-                        ? 'bg-emerald-900/35 text-emerald-200'
-                        : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                  </button>
+                  <div key={item.id}>
+                    <button
+                      onClick={() => onSelect(item.id, item.label, section.title)}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${
+                        activeId === item.id
+                          ? 'bg-emerald-900/35 text-emerald-200'
+                          : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                    </button>
+                    {item.id === 'func-finanzas' ? (
+                      <button
+                        onClick={() => onSelect('finance-cashflow', 'Cash Flow', 'FINANZAS')}
+                        className={`ml-5 mt-1 flex w-[calc(100%-1.25rem)] items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${
+                          activeId === 'finance-cashflow'
+                            ? 'bg-emerald-900/35 text-emerald-200'
+                            : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100'
+                        }`}
+                      >
+                        <span>Cash Flow</span>
+                      </button>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>
