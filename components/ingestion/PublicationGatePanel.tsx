@@ -1,3 +1,5 @@
+'use client';
+
 import type { PublicationGateResult } from '@/lib/ingestion/publicationGate';
 
 type PublicationGatePanelProps = {
