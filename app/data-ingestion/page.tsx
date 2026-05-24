@@ -153,13 +153,14 @@ export default function DataIngestionPage() {
       monthRange: parseResult.monthRange,
       recordCount: parseResult.records.length,
       monthlySummary: parseResult.monthlySummary,
+      records: parseResult.records,
       previewRows: parseResult.records.slice(0, 25),
       issues: parseResult.issues,
       totals: normalizedTotals,
     });
 
     setStage('published');
-    setPublishedMessage('Carga publicada. Ya podes verla en el dashboard global.');
+    setPublishedMessage('Carga publicada. Ya podes verla en el dashboard global y en Finanzas > Cash Flow.');
   };
 
   return (
