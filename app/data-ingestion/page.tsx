@@ -9,6 +9,7 @@ import { IngestionTotalsPanel } from '@/components/ingestion/IngestionTotalsPane
 import { IngestionValidationPanel, type IngestionValidationCheck } from '@/components/ingestion/IngestionValidationPanel';
 import { NormalizedPreviewTable } from '@/components/ingestion/NormalizedPreviewTable';
 import { detectCashFlowFile } from '@/lib/ingestion/detectCashFlowWorkbook';
+import { savePublishedCashFlow } from '@/lib/ingestion/publishedCashFlowStore';
 import type { GenericCashFlowNormalizeResult, GenericCashFlowRecord } from '@/lib/parsers/genericWideCashFlow';
 
 const stageOrder: IngestionStage[] = [
@@ -53,6 +54,7 @@ export default function DataIngestionPage() {
   const [parseResult, setParseResult] = useState<GenericCashFlowNormalizeResult | null>(null);
   const [fileDiagnostic, setFileDiagnostic] = useState<FileDiagnostic | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  const [publishedMessage, setPublishedMessage] = useState<string | null>(null);
 
   const schema = standardDatasetSchemas.find((item) => item.id === 'cash-flow') ?? standardDatasetSchemas[0];
   const progressIndex = stageOrder.indexOf(stage);
@@ -105,6 +107,7 @@ export default function DataIngestionPage() {
     setParseResult(null);
     setFileDiagnostic(null);
     setReadError(null);
+    setPublishedMessage(null);
   };
 
   const readExcelFile = async (file: File) => {
@@ -139,6 +142,24 @@ export default function DataIngestionPage() {
   const approveReading = () => {
     setApprovedReading(true);
     setStage('mapped');
+  };
+
+  const publishToDashboard = () => {
+    if (!parseResult) return;
+
+    savePublishedCashFlow({
+      sourceFile: fileName,
+      publishedAt: new Date().toISOString(),
+      monthRange: parseResult.monthRange,
+      recordCount: parseResult.records.length,
+      monthlySummary: parseResult.monthlySummary,
+      previewRows: parseResult.records.slice(0, 25),
+      issues: parseResult.issues,
+      totals: normalizedTotals,
+    });
+
+    setStage('published');
+    setPublishedMessage('Carga publicada. Ya podes verla en el dashboard global.');
   };
 
   return (
@@ -204,6 +225,14 @@ export default function DataIngestionPage() {
               <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Archivo actual</p>
               <p className="mt-1 font-medium text-zinc-100">{fileName}</p>
               {readError ? <p className="mt-2 text-xs text-amber-300">{readError}</p> : null}
+              {publishedMessage ? (
+                <p className="mt-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                  {publishedMessage}{' '}
+                  <Link href="/dashboard" className="font-semibold underline underline-offset-4">
+                    Ir al dashboard
+                  </Link>
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-4 grid gap-2">
@@ -216,7 +245,7 @@ export default function DataIngestionPage() {
               <button onClick={() => setStage('approved')} disabled={stage !== 'pending-approval'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-40">
                 <CheckCircle2 size={16} /> Aprobar carga
               </button>
-              <button onClick={() => setStage('published')} disabled={stage !== 'approved' || issues.length > 0} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40">
+              <button onClick={publishToDashboard} disabled={stage !== 'approved' || issues.length > 0} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40">
                 Publicar en dashboard
               </button>
             </div>
