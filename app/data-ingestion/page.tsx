@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
-import { detectCashFlowWorkbook } from '@/lib/ingestion/detectCashFlowWorkbook';
+import { detectCashFlowFile } from '@/lib/ingestion/detectCashFlowWorkbook';
 import type { GenericCashFlowNormalizeResult } from '@/lib/parsers/genericWideCashFlow';
 
 const stageOrder: IngestionStage[] = [
@@ -119,10 +119,7 @@ export default function DataIngestionPage() {
     resetFileState();
 
     try {
-      const XLSX = await import('xlsx');
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const result = detectCashFlowWorkbook(workbook, XLSX.utils);
+      const result = await detectCashFlowFile(file);
 
       if (!result) {
         setReadError('No se pudo leer el archivo.');
