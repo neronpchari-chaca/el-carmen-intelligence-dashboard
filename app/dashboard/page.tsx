@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { PublishedCashFlowPanel } from '@/components/dashboard/PublishedCashFlowPanel';
 import { DashboardContent } from '@/components/DashboardContent';
 import { Sidebar } from '@/components/Sidebar';
 import { Topbar } from '@/components/Topbar';
@@ -22,7 +23,10 @@ export default function DashboardPage() {
       <Sidebar activeId={active.id} onSelect={handleSelect} />
       <div className="ml-0 px-4 py-4 md:ml-80 md:px-8 md:py-6">
         <Topbar section={active.section} title={active.label} />
-        <DashboardContent activeId={active.id} />
+        <section className="space-y-6">
+          {active.id === 'global-dashboard' ? <PublishedCashFlowPanel /> : null}
+          <DashboardContent activeId={active.id} />
+        </section>
       </div>
     </main>
   );
