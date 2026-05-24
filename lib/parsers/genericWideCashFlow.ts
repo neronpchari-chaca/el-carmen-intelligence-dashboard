@@ -131,7 +131,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
   }
 
   const firstMonthIndex = header.monthIndexes[0]?.index ?? 1;
-  const records = rows.slice(header.rowIndex + 1).flatMap((row, offset) => {
+  const records: GenericCashFlowRecord[] = rows.slice(header.rowIndex + 1).flatMap((row, offset) => {
     const sourceRow = header.rowIndex + offset + 2;
     const concept = buildConcept(row, firstMonthIndex);
 
@@ -148,11 +148,11 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       return [];
     }
 
-    return header.monthIndexes.flatMap(({ period, index }) => {
+    return header.monthIndexes.flatMap(({ period, index }): GenericCashFlowRecord[] => {
       const amount = roundMoney(parseAmount(row[index]));
       if (amount === 0) return [];
 
-      const type = amount > 0 ? 'Entrada' : amount < 0 ? 'Salida' : 'Revisar';
+      const type: GenericCashFlowRecord['type'] = amount > 0 ? 'Entrada' : amount < 0 ? 'Salida' : 'Revisar';
       return [
         {
           period,
