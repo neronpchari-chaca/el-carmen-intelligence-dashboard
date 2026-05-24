@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
+import { CashFlowReadingDiagnosticPanel } from '@/components/ingestion/CashFlowReadingDiagnosticPanel';
 import { IngestionIssuesPanel } from '@/components/ingestion/IngestionIssuesPanel';
 import { IngestionTotalsPanel } from '@/components/ingestion/IngestionTotalsPanel';
 import { IngestionValidationPanel, type IngestionValidationCheck } from '@/components/ingestion/IngestionValidationPanel';
@@ -75,7 +76,8 @@ export default function DataIngestionPage() {
   }, [parseResult]);
 
   const issues = parseResult?.issues ?? [];
-  const canValidate = Boolean(parseResult && approvedReading && parseResult.records.length > 0);
+  const lowConfidence = parseResult?.readingDiagnostic.confidence === 'baja';
+  const canValidate = Boolean(parseResult && approvedReading && parseResult.records.length > 0 && !lowConfidence);
   const showPreview = Boolean(parseResult) || (stage !== 'received' && stage !== 'ai-mapping-suggested');
 
   const validationChecks: IngestionValidationCheck[] = [
@@ -83,6 +85,13 @@ export default function DataIngestionPage() {
       label: 'Archivo leido',
       status: fileDiagnostic || readError ? (readError ? 'warning' : 'ok') : 'ok',
       detail: fileDiagnostic?.detail ?? readError ?? 'Modo maqueta con datos de ejemplo.',
+    },
+    {
+      label: 'Confianza de lectura',
+      status: lowConfidence ? 'warning' : 'ok',
+      detail: parseResult
+        ? `${parseResult.readingDiagnostic.confidence} (${parseResult.readingDiagnostic.confidenceScore}/100). ${lowConfidence ? 'Requiere revisar antes de publicar.' : 'Puede pasar a control humano.'}`
+        : 'Pendiente hasta subir un cash flow.',
     },
     {
       label: 'Movimientos detectados',
@@ -124,11 +133,11 @@ export default function DataIngestionPage() {
 
       setParseResult(result);
       setFileDiagnostic({
-        status: result.records.length > 0 && result.issues.length === 0 ? 'ok' : 'warning',
+        status: result.records.length > 0 && result.issues.length === 0 && result.readingDiagnostic.confidence !== 'baja' ? 'ok' : 'warning',
         title: result.records.length > 0 ? 'Cash flow detectado' : 'Requiere revision',
         detail:
           result.records.length > 0
-            ? 'El sistema detecto una estructura de cash flow y preparo un preview para controlar.'
+            ? `El sistema detecto una estructura de cash flow con confianza ${result.readingDiagnostic.confidence}. Revisar diagnostico antes de publicar.`
             : 'El archivo se leyo, pero no se pudo detectar una estructura suficiente para normalizar movimientos.',
         records: result.records.length,
         monthRange: result.monthRange,
@@ -145,7 +154,7 @@ export default function DataIngestionPage() {
   };
 
   const publishToDashboard = () => {
-    if (!parseResult) return;
+    if (!parseResult || lowConfidence) return;
 
     savePublishedCashFlow({
       sourceFile: fileName,
@@ -153,6 +162,8 @@ export default function DataIngestionPage() {
       monthRange: parseResult.monthRange,
       recordCount: parseResult.records.length,
       monthlySummary: parseResult.monthlySummary,
+      balanceSummary: parseResult.balanceSummary,
+      readingDiagnostic: parseResult.readingDiagnostic,
       records: parseResult.records,
       previewRows: parseResult.records.slice(0, 25),
       issues: parseResult.issues,
@@ -246,7 +257,7 @@ export default function DataIngestionPage() {
               <button onClick={() => setStage('approved')} disabled={stage !== 'pending-approval'} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-semibold text-zinc-200 transition hover:border-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-40">
                 <CheckCircle2 size={16} /> Aprobar carga
               </button>
-              <button onClick={publishToDashboard} disabled={stage !== 'approved' || issues.length > 0} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40">
+              <button onClick={publishToDashboard} disabled={stage !== 'approved' || issues.length > 0 || lowConfidence} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40">
                 Publicar en dashboard
               </button>
             </div>
@@ -280,6 +291,7 @@ export default function DataIngestionPage() {
               </article>
             ) : null}
 
+            {parseResult ? <CashFlowReadingDiagnosticPanel result={parseResult} /> : null}
             <IngestionValidationPanel checks={validationChecks} currentStage={ingestionStages[stage]} />
             <IngestionIssuesPanel issues={issues} />
           </section>
