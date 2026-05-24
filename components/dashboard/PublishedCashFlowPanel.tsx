@@ -20,10 +20,18 @@ const dateFormatter = new Intl.DateTimeFormat('es-AR', {
 const formatMoney = (value: number) => moneyFormatter.format(value);
 
 function buildExecutiveSignals(snapshot: PublishedCashFlowSnapshot) {
+  const balanceByPeriod = new Map((snapshot.balanceSummary ?? []).map((row) => [row.period, row.closingBalance]));
   let accumulated = 0;
   const evolution = snapshot.monthlySummary.map((row) => {
     accumulated += row.net;
-    return { period: row.period, net: row.net, expense: row.expense, cash: Math.round(accumulated * 100) / 100 };
+    const hasClosingBalance = balanceByPeriod.has(row.period);
+    return {
+      period: row.period,
+      net: row.net,
+      expense: row.expense,
+      cash: hasClosingBalance ? (balanceByPeriod.get(row.period) ?? 0) : Math.round(accumulated * 100) / 100,
+      source: hasClosingBalance ? 'saldo final' : 'acumulado calculado',
+    };
   });
 
   const worst = evolution.reduce((current, row) => (row.cash < current.cash ? row : current), evolution[0]);
@@ -63,13 +71,13 @@ export function PublishedCashFlowPanel() {
     {
       label: 'Caja acumulada cargada',
       value: formatMoney(signals.last?.cash ?? 0),
-      detail: signals.last ? `Ultimo periodo: ${signals.last.period}` : 'Sin periodo',
+      detail: signals.last ? `Ultimo periodo: ${signals.last.period} · ${signals.last.source}` : 'Sin periodo',
       tone: (signals.last?.cash ?? 0) < 0 ? 'text-rose-300' : 'text-emerald-300',
     },
     {
       label: 'Maxima exposicion',
       value: formatMoney(signals.worst?.cash ?? 0),
-      detail: signals.worst ? `Mes de mayor riesgo: ${signals.worst.period}` : 'Sin periodo',
+      detail: signals.worst ? `Mes de mayor riesgo: ${signals.worst.period} · ${signals.worst.source}` : 'Sin periodo',
       tone: (signals.worst?.cash ?? 0) < 0 ? 'text-rose-300' : 'text-amber-300',
     },
     {
