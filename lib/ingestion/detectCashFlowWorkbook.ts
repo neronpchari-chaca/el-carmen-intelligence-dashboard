@@ -22,14 +22,26 @@ type XlsxModuleLike = {
 const normalizeRows = (rows: unknown[][]): GenericCashFlowRow[] =>
   rows.map((row) => row.map((cell): GenericCashFlowCell => (typeof cell === 'number' || typeof cell === 'string' ? cell : cell == null ? null : String(cell))));
 
+const normalizeSheetName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const scoreCashFlowCandidate = (candidate: GenericCashFlowNormalizeResult) => {
+  const sheetName = normalizeSheetName(candidate.sourceSheet);
+  const generatedSheetPenalty = /mapa|agrupad|consolid|resum|summary/.test(sheetName) ? 10000 : 0;
+  const balanceBonus = candidate.balanceSummary.length > 0 ? 5000 : 0;
+
+  return candidate.readingDiagnostic.confidenceScore + balanceBonus + candidate.records.length - generatedSheetPenalty;
+};
+
 const chooseBestCashFlow = (candidates: GenericCashFlowNormalizeResult[]) => {
   const withRecords = candidates.filter((candidate) => candidate.records.length > 0);
   const pool = withRecords.length ? withRecords : candidates;
 
-  return pool.sort((a, b) => {
-    if (b.records.length !== a.records.length) return b.records.length - a.records.length;
-    return a.issues.length - b.issues.length;
-  })[0] ?? null;
+  return pool.sort((a, b) => scoreCashFlowCandidate(b) - scoreCashFlowCandidate(a))[0] ?? null;
 };
 
 export function detectCashFlowWorkbook(workbook: WorkbookLike, xlsx: XlsxModuleLike): GenericCashFlowNormalizeResult | null {
