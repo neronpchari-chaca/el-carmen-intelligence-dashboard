@@ -99,6 +99,29 @@ const buildConcept = (row: GenericCashFlowRow, firstMonthIndex: number) =>
     .filter(Boolean)
     .join(' / ');
 
+const detectSection = (concept: string): GenericCashFlowRecord['type'] | null => {
+  const normalized = normalizeText(concept);
+
+  if (/^(entradas?|ingresos?|receitas?)(\b|\s*\/)/.test(normalized)) return 'Entrada';
+  if (/^(saidas?|salidas?|egresos?|despesas?|gastos?)(\b|\s*\/)/.test(normalized)) return 'Salida';
+
+  return null;
+};
+
+const isBalanceOrTotalRow = (concept: string) => {
+  const normalized = normalizeText(concept);
+
+  return (
+    /\bsaldo\b/.test(normalized) ||
+    /\bacumulado\b/.test(normalized) ||
+    /^neto\b/.test(normalized) ||
+    /^resultado\b/.test(normalized) ||
+    /^total\b/.test(normalized) ||
+    /^flujo\b/.test(normalized) ||
+    /^fluxo\b/.test(normalized)
+  );
+};
+
 const addIssue = (issues: GenericCashFlowIssue[], issue: GenericCashFlowIssue) => {
   const current = issues.find((item) => item.group === issue.group && item.title === issue.title);
   if (current) {
@@ -107,6 +130,37 @@ const addIssue = (issues: GenericCashFlowIssue[], issue: GenericCashFlowIssue) =
   }
 
   issues.push(issue);
+};
+
+const buildRecord = (
+  sourceSheet: string,
+  sourceRow: number,
+  period: string,
+  concept: string,
+  amount: number,
+  section: GenericCashFlowRecord['type'] | null,
+): GenericCashFlowRecord => {
+  if (section === 'Entrada') {
+    const income = Math.abs(amount);
+    return { period, concept, type: 'Entrada', income, expense: 0, net: income, sourceSheet, sourceRow };
+  }
+
+  if (section === 'Salida') {
+    const expense = Math.abs(amount);
+    return { period, concept, type: 'Salida', income: 0, expense, net: -expense, sourceSheet, sourceRow };
+  }
+
+  const type: GenericCashFlowRecord['type'] = amount > 0 ? 'Entrada' : amount < 0 ? 'Salida' : 'Revisar';
+  return {
+    period,
+    concept,
+    type,
+    income: amount > 0 ? amount : 0,
+    expense: amount < 0 ? Math.abs(amount) : 0,
+    net: amount,
+    sourceSheet,
+    sourceRow,
+  };
 };
 
 export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericCashFlowRow[]): GenericCashFlowNormalizeResult {
@@ -131,7 +185,10 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
   }
 
   const firstMonthIndex = header.monthIndexes[0]?.index ?? 1;
-  const records: GenericCashFlowRecord[] = rows.slice(header.rowIndex + 1).flatMap((row, offset) => {
+  const records: GenericCashFlowRecord[] = [];
+  let currentSection: GenericCashFlowRecord['type'] | null = null;
+
+  rows.slice(header.rowIndex + 1).forEach((row, offset) => {
     const sourceRow = header.rowIndex + offset + 2;
     const concept = buildConcept(row, firstMonthIndex);
 
@@ -145,26 +202,22 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
           count: 1,
         });
       }
-      return [];
+      return;
     }
 
-    return header.monthIndexes.flatMap(({ period, index }): GenericCashFlowRecord[] => {
-      const amount = roundMoney(parseAmount(row[index]));
-      if (amount === 0) return [];
+    const section = detectSection(concept);
+    if (section && !concept.includes('/')) {
+      currentSection = section;
+      return;
+    }
 
-      const type: GenericCashFlowRecord['type'] = amount > 0 ? 'Entrada' : amount < 0 ? 'Salida' : 'Revisar';
-      return [
-        {
-          period,
-          concept,
-          type,
-          income: amount > 0 ? amount : 0,
-          expense: amount < 0 ? Math.abs(amount) : 0,
-          net: amount,
-          sourceSheet,
-          sourceRow,
-        },
-      ];
+    if (isBalanceOrTotalRow(concept)) return;
+
+    header.monthIndexes.forEach(({ period, index }) => {
+      const amount = roundMoney(parseAmount(row[index]));
+      if (amount === 0) return;
+
+      records.push(buildRecord(sourceSheet, sourceRow, period, concept, amount, section ?? currentSection));
     });
   });
 
