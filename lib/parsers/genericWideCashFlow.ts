@@ -20,6 +20,24 @@ export type GenericCashFlowIssue = {
   count: number;
 };
 
+export type GenericCashFlowReadingDiagnostic = {
+  confidence: 'alta' | 'media' | 'baja';
+  confidenceScore: number;
+  reasons: string[];
+  detectedRows: {
+    headerRow: number;
+    entradaRow: number | null;
+    salidaRow: number | null;
+    saldoFinalRow: number | null;
+    excludedRows: number;
+  };
+  excludedSamples: Array<{
+    row: number;
+    concept: string;
+    reason: string;
+  }>;
+};
+
 export type GenericCashFlowNormalizeResult = {
   sourceSheet: string;
   monthRange: string;
@@ -31,7 +49,12 @@ export type GenericCashFlowNormalizeResult = {
     expense: number;
     net: number;
   }>;
+  balanceSummary: Array<{
+    period: string;
+    closingBalance: number;
+  }>;
   issues: GenericCashFlowIssue[];
+  readingDiagnostic: GenericCashFlowReadingDiagnostic;
 };
 
 const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
@@ -108,6 +131,8 @@ const detectSection = (concept: string): GenericCashFlowRecord['type'] | null =>
   return null;
 };
 
+const isClosingBalanceRow = (concept: string) => /\bsaldo\s+final\b/.test(normalizeText(concept));
+
 const isBalanceOrTotalRow = (concept: string) => {
   const normalized = normalizeText(concept);
 
@@ -163,6 +188,65 @@ const buildRecord = (
   };
 };
 
+const buildReadingDiagnostic = ({
+  headerRow,
+  monthCount,
+  recordCount,
+  issueCount,
+  entradaRow,
+  salidaRow,
+  saldoFinalRow,
+  excludedRows,
+  excludedSamples,
+}: {
+  headerRow: number;
+  monthCount: number;
+  recordCount: number;
+  issueCount: number;
+  entradaRow: number | null;
+  salidaRow: number | null;
+  saldoFinalRow: number | null;
+  excludedRows: number;
+  excludedSamples: GenericCashFlowReadingDiagnostic['excludedSamples'];
+}): GenericCashFlowReadingDiagnostic => {
+  const reasons: string[] = [];
+  let score = 0;
+
+  if (monthCount >= 2) {
+    score += 20;
+    reasons.push(`Se detectaron ${monthCount} columnas mensuales.`);
+  }
+  if (recordCount > 0) {
+    score += 25;
+    reasons.push(`Se normalizaron ${recordCount} movimientos.`);
+  }
+  if (entradaRow) {
+    score += 15;
+    reasons.push(`Se detecto seccion de entradas en fila ${entradaRow}.`);
+  }
+  if (salidaRow) {
+    score += 15;
+    reasons.push(`Se detecto seccion de salidas en fila ${salidaRow}.`);
+  }
+  if (saldoFinalRow) {
+    score += 15;
+    reasons.push(`Se detecto saldo final en fila ${saldoFinalRow}.`);
+  }
+  if (issueCount === 0) score += 10;
+  if (issueCount > 0) reasons.push(`Quedan ${issueCount} observacion(es) por revisar.`);
+
+  const confidenceScore = Math.max(0, Math.min(100, score));
+  const confidence = confidenceScore >= 80 ? 'alta' : confidenceScore >= 55 ? 'media' : 'baja';
+
+  return {
+    confidence,
+    confidenceScore,
+    reasons,
+    detectedRows: { headerRow, entradaRow, salidaRow, saldoFinalRow, excludedRows },
+    excludedSamples: excludedSamples.slice(0, 8),
+  };
+};
+
 export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericCashFlowRow[]): GenericCashFlowNormalizeResult {
   const issues: GenericCashFlowIssue[] = [];
   const header = findMonthHeaderRow(rows);
@@ -173,6 +257,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       monthRange: 'No detectado',
       records: [],
       monthlySummary: [],
+      balanceSummary: [],
       issues: [
         {
           group: 'estructura',
@@ -181,12 +266,25 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
           count: 1,
         },
       ],
+      readingDiagnostic: {
+        confidence: 'baja',
+        confidenceScore: 0,
+        reasons: ['No se detectaron columnas mensuales.'],
+        detectedRows: { headerRow: 0, entradaRow: null, salidaRow: null, saldoFinalRow: null, excludedRows: 0 },
+        excludedSamples: [],
+      },
     };
   }
 
   const firstMonthIndex = header.monthIndexes[0]?.index ?? 1;
   const records: GenericCashFlowRecord[] = [];
+  const balanceSummary: GenericCashFlowNormalizeResult['balanceSummary'] = [];
+  const excludedSamples: GenericCashFlowReadingDiagnostic['excludedSamples'] = [];
+  let excludedRows = 0;
   let currentSection: GenericCashFlowRecord['type'] | null = null;
+  let entradaRow: number | null = null;
+  let salidaRow: number | null = null;
+  let saldoFinalRow: number | null = null;
 
   rows.slice(header.rowIndex + 1).forEach((row, offset) => {
     const sourceRow = header.rowIndex + offset + 2;
@@ -208,10 +306,28 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     const section = detectSection(concept);
     if (section && !concept.includes('/')) {
       currentSection = section;
+      if (section === 'Entrada') entradaRow = sourceRow;
+      if (section === 'Salida') salidaRow = sourceRow;
+      excludedRows += 1;
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Encabezado de seccion' });
       return;
     }
 
-    if (isBalanceOrTotalRow(concept)) return;
+    if (isClosingBalanceRow(concept)) {
+      saldoFinalRow = sourceRow;
+      header.monthIndexes.forEach(({ period, index }) => {
+        balanceSummary.push({ period, closingBalance: roundMoney(parseAmount(row[index])) });
+      });
+      excludedRows += 1;
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Saldo de control, no movimiento' });
+      return;
+    }
+
+    if (isBalanceOrTotalRow(concept)) {
+      excludedRows += 1;
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Saldo, total o resumen excluido' });
+      return;
+    }
 
     header.monthIndexes.forEach(({ period, index }) => {
       const amount = roundMoney(parseAmount(row[index]));
@@ -252,6 +368,18 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     monthRange: formatMonthRange(header.monthIndexes.map((item) => item.period)),
     records,
     monthlySummary: Array.from(summaryByPeriod.values()),
+    balanceSummary,
     issues,
+    readingDiagnostic: buildReadingDiagnostic({
+      headerRow: header.rowIndex + 1,
+      monthCount: header.monthIndexes.length,
+      recordCount: records.length,
+      issueCount: issues.length,
+      entradaRow,
+      salidaRow,
+      saldoFinalRow,
+      excludedRows,
+      excludedSamples,
+    }),
   };
 }

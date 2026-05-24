@@ -23,15 +23,21 @@ const moneyFormatter = new Intl.NumberFormat('es-AR', {
 const formatMoney = (value: number) => moneyFormatter.format(value);
 
 function buildCashEvolution(snapshot: PublishedCashFlowSnapshot) {
+  const balanceByPeriod = new Map((snapshot.balanceSummary ?? []).map((row) => [row.period, row.closingBalance]));
   let accumulated = 0;
+
   return snapshot.monthlySummary.map((row) => {
     accumulated += row.net;
+    const hasClosingBalance = balanceByPeriod.has(row.period);
+    const cajaAcumulada = hasClosingBalance ? (balanceByPeriod.get(row.period) ?? 0) : Math.round(accumulated * 100) / 100;
+
     return {
       periodo: row.period,
       ingresos: row.income,
       egresos: row.expense,
       neto: row.net,
-      cajaAcumulada: Math.round(accumulated * 100) / 100,
+      cajaAcumulada,
+      fuenteCaja: hasClosingBalance ? 'Saldo final del archivo' : 'Acumulado calculado',
     };
   });
 }
@@ -67,7 +73,7 @@ function buildAlerts(snapshot: PublishedCashFlowSnapshot, evolution: ReturnType<
   if (worstMonth) {
     alerts.push({
       title: 'Maxima exposicion de caja',
-      detail: `${worstMonth.periodo} muestra la mayor exposicion: ${formatMoney(worstMonth.cajaAcumulada)}.`,
+      detail: `${worstMonth.periodo} muestra la mayor exposicion: ${formatMoney(worstMonth.cajaAcumulada)} (${worstMonth.fuenteCaja}).`,
       tone: worstMonth.cajaAcumulada < 0 ? 'critical' : 'warning',
     });
   }
@@ -181,10 +187,12 @@ export function CashFlowExecutiveModule() {
 
   if (!snapshot || !model) return <EmptyCashFlowState />;
 
+  const hasRealBalances = (snapshot.balanceSummary?.length ?? 0) > 0;
+
   const kpis = [
-    { label: 'Caja acumulada cargada', value: formatMoney(model.currentCash), helper: 'Calculada con los movimientos publicados.', icon: <WalletCards size={16} /> },
+    { label: 'Caja acumulada cargada', value: formatMoney(model.currentCash), helper: hasRealBalances ? 'Segun saldo final del archivo.' : 'Calculada con movimientos publicados.', icon: <WalletCards size={16} /> },
     { label: 'Neto ultimo mes', value: formatMoney(model.currentMonth?.net ?? 0), helper: model.currentMonth?.period ?? 'Sin periodo', icon: <BarChart3 size={16} /> },
-    { label: 'Maxima exposicion', value: formatMoney(model.worstMonth?.cajaAcumulada ?? 0), helper: model.worstMonth?.periodo ?? 'Sin periodo', icon: <AlertTriangle size={16} /> },
+    { label: 'Maxima exposicion', value: formatMoney(model.worstMonth?.cajaAcumulada ?? 0), helper: model.worstMonth ? `${model.worstMonth.periodo} · ${model.worstMonth.fuenteCaja}` : 'Sin periodo', icon: <AlertTriangle size={16} /> },
     { label: 'Burn rate mensual', value: formatMoney(model.burnRate), helper: 'Promedio mensual de egresos.', icon: <LineChartIcon size={16} /> },
     { label: 'Runway financiero', value: model.runway, helper: 'Estimado con caja cargada y burn rate.', icon: <Landmark size={16} /> },
     { label: 'Resultado USD', value: 'Pendiente TC', helper: 'Listo para conectar tipo de cambio.', icon: <BrainCircuit size={16} /> },

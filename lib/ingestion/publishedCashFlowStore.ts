@@ -1,4 +1,9 @@
-import type { GenericCashFlowIssue, GenericCashFlowNormalizeResult, GenericCashFlowRecord } from '@/lib/parsers/genericWideCashFlow';
+import type {
+  GenericCashFlowIssue,
+  GenericCashFlowNormalizeResult,
+  GenericCashFlowReadingDiagnostic,
+  GenericCashFlowRecord,
+} from '@/lib/parsers/genericWideCashFlow';
 
 export type PublishedCashFlowSnapshot = {
   sourceFile: string;
@@ -6,6 +11,8 @@ export type PublishedCashFlowSnapshot = {
   monthRange: string;
   recordCount: number;
   monthlySummary: GenericCashFlowNormalizeResult['monthlySummary'];
+  balanceSummary?: GenericCashFlowNormalizeResult['balanceSummary'];
+  readingDiagnostic?: GenericCashFlowReadingDiagnostic;
   records?: GenericCashFlowRecord[];
   previewRows: GenericCashFlowRecord[];
   issues: GenericCashFlowIssue[];
