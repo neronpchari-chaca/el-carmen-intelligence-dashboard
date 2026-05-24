@@ -4,12 +4,8 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
-import {
-  normalizeGenericWideCashFlow,
-  type GenericCashFlowCell,
-  type GenericCashFlowNormalizeResult,
-  type GenericCashFlowRow,
-} from '@/lib/parsers/genericWideCashFlow';
+import { detectCashFlowWorkbook } from '@/lib/ingestion/detectCashFlowWorkbook';
+import type { GenericCashFlowNormalizeResult } from '@/lib/parsers/genericWideCashFlow';
 
 const stageOrder: IngestionStage[] = [
   'received',
@@ -52,20 +48,7 @@ type ValidationCheck = {
   detail: string;
 };
 
-const normalizeRows = (rows: unknown[][]): GenericCashFlowRow[] =>
-  rows.map((row) => row.map((cell): GenericCashFlowCell => (typeof cell === 'number' || typeof cell === 'string' ? cell : cell == null ? null : String(cell))));
-
 const formatMoney = (value: number) => value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const chooseBestCashFlow = (candidates: GenericCashFlowNormalizeResult[]) => {
-  const withRecords = candidates.filter((candidate) => candidate.records.length > 0);
-  const pool = withRecords.length ? withRecords : candidates;
-
-  return pool.sort((a, b) => {
-    if (b.records.length !== a.records.length) return b.records.length - a.records.length;
-    return a.issues.length - b.issues.length;
-  })[0];
-};
 
 export default function DataIngestionPage() {
   const [stage, setStage] = useState<IngestionStage>('received');
@@ -139,12 +122,7 @@ export default function DataIngestionPage() {
       const XLSX = await import('xlsx');
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array' });
-      const candidates = workbook.SheetNames.map((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
-        const rows = normalizeRows(XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null }) as unknown[][]);
-        return normalizeGenericWideCashFlow(sheetName, rows);
-      });
-      const result = chooseBestCashFlow(candidates);
+      const result = detectCashFlowWorkbook(workbook, XLSX.utils);
 
       if (!result) {
         setReadError('No se pudo leer el archivo.');
