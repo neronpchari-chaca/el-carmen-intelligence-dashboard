@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, ShieldCheck, Upload, Wand2 } from 'lucide-react';
 import { ingestionStages, standardDatasetSchemas, type IngestionStage } from '@/config/dataIngestion';
 import { CashFlowReadingDiagnosticPanel } from '@/components/ingestion/CashFlowReadingDiagnosticPanel';
+import { CashFlowReconciliationPanel } from '@/components/ingestion/CashFlowReconciliationPanel';
 import { IngestionIssuesPanel } from '@/components/ingestion/IngestionIssuesPanel';
 import { IngestionTotalsPanel } from '@/components/ingestion/IngestionTotalsPanel';
 import { IngestionValidationPanel, type IngestionValidationCheck } from '@/components/ingestion/IngestionValidationPanel';
@@ -77,6 +78,7 @@ export default function DataIngestionPage() {
 
   const issues = parseResult?.issues ?? [];
   const lowConfidence = parseResult?.readingDiagnostic.confidence === 'baja';
+  const reconciliationWarnings = parseResult?.reconciliation.filter((row) => row.status === 'warning').length ?? 0;
   const canValidate = Boolean(parseResult && approvedReading && parseResult.records.length > 0 && !lowConfidence);
   const showPreview = Boolean(parseResult) || (stage !== 'received' && stage !== 'ai-mapping-suggested');
 
@@ -92,6 +94,11 @@ export default function DataIngestionPage() {
       detail: parseResult
         ? `${parseResult.readingDiagnostic.confidence} (${parseResult.readingDiagnostic.confidenceScore}/100). ${lowConfidence ? 'Requiere revisar antes de publicar.' : 'Puede pasar a control humano.'}`
         : 'Pendiente hasta subir un cash flow.',
+    },
+    {
+      label: 'Control cruzado de saldos',
+      status: reconciliationWarnings > 0 ? 'warning' : 'ok',
+      detail: parseResult ? `${parseResult.reconciliation.length - reconciliationWarnings}/${parseResult.reconciliation.length} meses conciliados.` : 'Pendiente hasta subir un cash flow.',
     },
     {
       label: 'Movimientos detectados',
@@ -131,13 +138,15 @@ export default function DataIngestionPage() {
         return;
       }
 
+      const warningCount = result.reconciliation.filter((row) => row.status === 'warning').length;
+
       setParseResult(result);
       setFileDiagnostic({
-        status: result.records.length > 0 && result.issues.length === 0 && result.readingDiagnostic.confidence !== 'baja' ? 'ok' : 'warning',
+        status: result.records.length > 0 && result.issues.length === 0 && result.readingDiagnostic.confidence !== 'baja' && warningCount === 0 ? 'ok' : 'warning',
         title: result.records.length > 0 ? 'Cash flow detectado' : 'Requiere revision',
         detail:
           result.records.length > 0
-            ? `El sistema detecto una estructura de cash flow con confianza ${result.readingDiagnostic.confidence}. Revisar diagnostico antes de publicar.`
+            ? `El sistema detecto una estructura de cash flow con confianza ${result.readingDiagnostic.confidence}. ${warningCount ? `${warningCount} mes(es) no cierran contra saldo final.` : 'Los saldos detectados cierran dentro de tolerancia.'}`
             : 'El archivo se leyo, pero no se pudo detectar una estructura suficiente para normalizar movimientos.',
         records: result.records.length,
         monthRange: result.monthRange,
@@ -292,6 +301,7 @@ export default function DataIngestionPage() {
             ) : null}
 
             {parseResult ? <CashFlowReadingDiagnosticPanel result={parseResult} /> : null}
+            {parseResult ? <CashFlowReconciliationPanel result={parseResult} /> : null}
             <IngestionValidationPanel checks={validationChecks} currentStage={ingestionStages[stage]} />
             <IngestionIssuesPanel issues={issues} />
           </section>
