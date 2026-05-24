@@ -28,6 +28,7 @@ export type GenericCashFlowReadingDiagnostic = {
     headerRow: number;
     entradaRow: number | null;
     salidaRow: number | null;
+    saldoAnteriorRow: number | null;
     saldoFinalRow: number | null;
     excludedRows: number;
   };
@@ -36,6 +37,18 @@ export type GenericCashFlowReadingDiagnostic = {
     concept: string;
     reason: string;
   }>;
+};
+
+export type GenericCashFlowReconciliation = {
+  period: string;
+  openingBalance: number | null;
+  income: number;
+  expense: number;
+  net: number;
+  expectedClosingBalance: number | null;
+  closingBalance: number | null;
+  difference: number | null;
+  status: 'ok' | 'warning' | 'missing-balance';
 };
 
 export type GenericCashFlowNormalizeResult = {
@@ -51,8 +64,10 @@ export type GenericCashFlowNormalizeResult = {
   }>;
   balanceSummary: Array<{
     period: string;
-    closingBalance: number;
+    openingBalance: number | null;
+    closingBalance: number | null;
   }>;
+  reconciliation: GenericCashFlowReconciliation[];
   issues: GenericCashFlowIssue[];
   readingDiagnostic: GenericCashFlowReadingDiagnostic;
 };
@@ -60,6 +75,7 @@ export type GenericCashFlowNormalizeResult = {
 const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
 const MONTH_ABBREVIATIONS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30);
+const RECONCILIATION_TOLERANCE = 1;
 
 const normalizeText = (value: GenericCashFlowCell) =>
   String(value ?? '')
@@ -131,6 +147,7 @@ const detectSection = (concept: string): GenericCashFlowRecord['type'] | null =>
   return null;
 };
 
+const isOpeningBalanceRow = (concept: string) => /\bsaldo\s+(anterior|inicial)\b/.test(normalizeText(concept));
 const isClosingBalanceRow = (concept: string) => /\bsaldo\s+final\b/.test(normalizeText(concept));
 
 const isBalanceOrTotalRow = (concept: string) => {
@@ -195,9 +212,11 @@ const buildReadingDiagnostic = ({
   issueCount,
   entradaRow,
   salidaRow,
+  saldoAnteriorRow,
   saldoFinalRow,
   excludedRows,
   excludedSamples,
+  reconciliationWarnings,
 }: {
   headerRow: number;
   monthCount: number;
@@ -205,9 +224,11 @@ const buildReadingDiagnostic = ({
   issueCount: number;
   entradaRow: number | null;
   salidaRow: number | null;
+  saldoAnteriorRow: number | null;
   saldoFinalRow: number | null;
   excludedRows: number;
   excludedSamples: GenericCashFlowReadingDiagnostic['excludedSamples'];
+  reconciliationWarnings: number;
 }): GenericCashFlowReadingDiagnostic => {
   const reasons: string[] = [];
   let score = 0;
@@ -232,8 +253,16 @@ const buildReadingDiagnostic = ({
     score += 15;
     reasons.push(`Se detecto saldo final en fila ${saldoFinalRow}.`);
   }
+  if (saldoAnteriorRow) {
+    score += 5;
+    reasons.push(`Se detecto saldo anterior en fila ${saldoAnteriorRow}.`);
+  }
   if (issueCount === 0) score += 10;
   if (issueCount > 0) reasons.push(`Quedan ${issueCount} observacion(es) por revisar.`);
+  if (reconciliationWarnings > 0) {
+    score -= 20;
+    reasons.push(`${reconciliationWarnings} mes(es) no cierran contra saldo final.`);
+  }
 
   const confidenceScore = Math.max(0, Math.min(100, score));
   const confidence = confidenceScore >= 80 ? 'alta' : confidenceScore >= 55 ? 'media' : 'baja';
@@ -242,9 +271,52 @@ const buildReadingDiagnostic = ({
     confidence,
     confidenceScore,
     reasons,
-    detectedRows: { headerRow, entradaRow, salidaRow, saldoFinalRow, excludedRows },
+    detectedRows: { headerRow, entradaRow, salidaRow, saldoAnteriorRow, saldoFinalRow, excludedRows },
     excludedSamples: excludedSamples.slice(0, 8),
   };
+};
+
+const buildReconciliation = (
+  monthlySummary: GenericCashFlowNormalizeResult['monthlySummary'],
+  balanceSummary: GenericCashFlowNormalizeResult['balanceSummary'],
+): GenericCashFlowReconciliation[] => {
+  const balanceByPeriod = new Map(balanceSummary.map((row) => [row.period, row]));
+
+  return monthlySummary.map((row, index) => {
+    const balance = balanceByPeriod.get(row.period);
+    const previousBalance = index > 0 ? balanceByPeriod.get(monthlySummary[index - 1].period)?.closingBalance ?? null : null;
+    const openingBalance = balance?.openingBalance ?? previousBalance;
+    const closingBalance = balance?.closingBalance ?? null;
+
+    if (openingBalance == null || closingBalance == null) {
+      return {
+        period: row.period,
+        openingBalance,
+        income: row.income,
+        expense: row.expense,
+        net: row.net,
+        expectedClosingBalance: null,
+        closingBalance,
+        difference: null,
+        status: 'missing-balance',
+      };
+    }
+
+    const expectedClosingBalance = roundMoney(openingBalance + row.net);
+    const difference = roundMoney(closingBalance - expectedClosingBalance);
+
+    return {
+      period: row.period,
+      openingBalance,
+      income: row.income,
+      expense: row.expense,
+      net: row.net,
+      expectedClosingBalance,
+      closingBalance,
+      difference,
+      status: Math.abs(difference) <= RECONCILIATION_TOLERANCE ? 'ok' : 'warning',
+    };
+  });
 };
 
 export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericCashFlowRow[]): GenericCashFlowNormalizeResult {
@@ -258,6 +330,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       records: [],
       monthlySummary: [],
       balanceSummary: [],
+      reconciliation: [],
       issues: [
         {
           group: 'estructura',
@@ -270,7 +343,7 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
         confidence: 'baja',
         confidenceScore: 0,
         reasons: ['No se detectaron columnas mensuales.'],
-        detectedRows: { headerRow: 0, entradaRow: null, salidaRow: null, saldoFinalRow: null, excludedRows: 0 },
+        detectedRows: { headerRow: 0, entradaRow: null, salidaRow: null, saldoAnteriorRow: null, saldoFinalRow: null, excludedRows: 0 },
         excludedSamples: [],
       },
     };
@@ -278,12 +351,13 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
 
   const firstMonthIndex = header.monthIndexes[0]?.index ?? 1;
   const records: GenericCashFlowRecord[] = [];
-  const balanceSummary: GenericCashFlowNormalizeResult['balanceSummary'] = [];
+  const balanceMap = new Map<string, { period: string; openingBalance: number | null; closingBalance: number | null }>();
   const excludedSamples: GenericCashFlowReadingDiagnostic['excludedSamples'] = [];
   let excludedRows = 0;
   let currentSection: GenericCashFlowRecord['type'] | null = null;
   let entradaRow: number | null = null;
   let salidaRow: number | null = null;
+  let saldoAnteriorRow: number | null = null;
   let saldoFinalRow: number | null = null;
 
   rows.slice(header.rowIndex + 1).forEach((row, offset) => {
@@ -313,13 +387,27 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       return;
     }
 
+    if (isOpeningBalanceRow(concept)) {
+      saldoAnteriorRow = sourceRow;
+      header.monthIndexes.forEach(({ period, index }) => {
+        const current = balanceMap.get(period) ?? { period, openingBalance: null, closingBalance: null };
+        current.openingBalance = roundMoney(parseAmount(row[index]));
+        balanceMap.set(period, current);
+      });
+      excludedRows += 1;
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Saldo anterior de control, no movimiento' });
+      return;
+    }
+
     if (isClosingBalanceRow(concept)) {
       saldoFinalRow = sourceRow;
       header.monthIndexes.forEach(({ period, index }) => {
-        balanceSummary.push({ period, closingBalance: roundMoney(parseAmount(row[index])) });
+        const current = balanceMap.get(period) ?? { period, openingBalance: null, closingBalance: null };
+        current.closingBalance = roundMoney(parseAmount(row[index]));
+        balanceMap.set(period, current);
       });
       excludedRows += 1;
-      excludedSamples.push({ row: sourceRow, concept, reason: 'Saldo de control, no movimiento' });
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Saldo final de control, no movimiento' });
       return;
     }
 
@@ -363,12 +451,18 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     summaryByPeriod.set(record.period, current);
   }
 
+  const monthlySummary = Array.from(summaryByPeriod.values());
+  const balanceSummary = header.monthIndexes.map(({ period }) => balanceMap.get(period) ?? { period, openingBalance: null, closingBalance: null });
+  const reconciliation = buildReconciliation(monthlySummary, balanceSummary);
+  const reconciliationWarnings = reconciliation.filter((row) => row.status === 'warning').length;
+
   return {
     sourceSheet,
     monthRange: formatMonthRange(header.monthIndexes.map((item) => item.period)),
     records,
-    monthlySummary: Array.from(summaryByPeriod.values()),
+    monthlySummary,
     balanceSummary,
+    reconciliation,
     issues,
     readingDiagnostic: buildReadingDiagnostic({
       headerRow: header.rowIndex + 1,
@@ -377,9 +471,11 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       issueCount: issues.length,
       entradaRow,
       salidaRow,
+      saldoAnteriorRow,
       saldoFinalRow,
       excludedRows,
       excludedSamples,
+      reconciliationWarnings,
     }),
   };
 }
