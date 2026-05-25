@@ -57,6 +57,7 @@ export type GenericCashFlowNormalizeResult = {
   readingDiagnostic: GenericCashFlowReadingDiagnostic;
 };
 
+type MonthIndex = { period: string; index: number };
 type ControlTotalsByPeriod = Map<string, { income?: number; expense?: number; net?: number }>;
 
 const MONTH_PATTERN = /^[a-z]{3}-\d{2}$/i;
@@ -114,7 +115,7 @@ const findMonthHeaderRow = (rows: GenericCashFlowRow[]) =>
       rowIndex,
       monthIndexes: row
         .map((cell, index) => ({ period: normalizeMonth(cell), index }))
-        .filter((item): item is { period: string; index: number } => Boolean(item.period)),
+        .filter((item): item is MonthIndex => Boolean(item.period)),
     }))
     .find((candidate) => candidate.monthIndexes.length >= 2);
 
@@ -162,8 +163,18 @@ const isBalanceOrTotalRow = (concept: string) => {
   );
 };
 
-const hasAnyMonthlyAmount = (row: GenericCashFlowRow, monthIndexes: Array<{ period: string; index: number }>) =>
+const hasAnyMonthlyAmount = (row: GenericCashFlowRow, monthIndexes: MonthIndex[]) =>
   monthIndexes.some((item) => parseAmount(row[item.index]) !== 0);
+
+const getMonthlyAmounts = (row: GenericCashFlowRow, monthIndexes: MonthIndex[]) =>
+  monthIndexes.map((item) => roundMoney(parseAmount(row[item.index])));
+
+const hasAnyAmount = (amounts: number[]) => amounts.some((amount) => Math.abs(amount) > MONEY_TOLERANCE);
+
+const amountsMatch = (left: number[], right: number[]) =>
+  left.length === right.length && left.every((amount, index) => Math.abs(roundMoney(amount - right[index])) <= MONEY_TOLERANCE);
+
+const addAmounts = (left: number[], right: number[]) => left.map((amount, index) => roundMoney(amount + right[index]));
 
 const findNextConceptRow = (rows: GenericCashFlowRow[], startIndex: number, firstMonthIndex: number) => {
   for (let index = startIndex; index < rows.length; index += 1) {
@@ -183,6 +194,37 @@ const hasIndentedDetailAfter = (rows: GenericCashFlowRow[], rowIndex: number, fi
   return isIndentedConceptRow(next.row, firstMonthIndex);
 };
 
+const isSubtotalOfFollowingRows = (rows: GenericCashFlowRow[], rowIndex: number, firstMonthIndex: number, monthIndexes: MonthIndex[]) => {
+  const currentAmounts = getMonthlyAmounts(rows[rowIndex] ?? [], monthIndexes);
+  if (!hasAnyAmount(currentAmounts)) return false;
+
+  let detailRows = 0;
+  let accumulated = currentAmounts.map(() => 0);
+
+  for (let index = rowIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index] ?? [];
+    const concept = buildConcept(row, firstMonthIndex);
+
+    if (!concept) {
+      if (detailRows > 0) break;
+      continue;
+    }
+
+    if (detectSection(concept) && !concept.includes('/')) break;
+    if (isBalanceOrTotalRow(concept)) break;
+
+    const amounts = getMonthlyAmounts(row, monthIndexes);
+    if (!hasAnyAmount(amounts)) continue;
+
+    accumulated = addAmounts(accumulated, amounts);
+    detailRows += 1;
+
+    if (amountsMatch(currentAmounts, accumulated)) return true;
+  }
+
+  return false;
+};
+
 const addIssue = (issues: GenericCashFlowIssue[], issue: GenericCashFlowIssue) => {
   const current = issues.find((item) => item.group === issue.group && item.title === issue.title);
   if (current) {
@@ -196,7 +238,7 @@ const addIssue = (issues: GenericCashFlowIssue[], issue: GenericCashFlowIssue) =
 const captureControlTotals = (
   totalsByPeriod: ControlTotalsByPeriod,
   row: GenericCashFlowRow,
-  monthIndexes: Array<{ period: string; index: number }>,
+  monthIndexes: MonthIndex[],
   field: 'income' | 'expense' | 'net',
 ) => {
   monthIndexes.forEach(({ period, index }) => {
@@ -382,21 +424,21 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     if (isIncomeTotalRow(concept)) {
       captureControlTotals(controlTotalsByPeriod, row, header.monthIndexes, 'income');
       excludedRows += 1;
-      excludedSamples.push({ row: sourceRow, concept, reason: 'Total de ingresos usado como control' });
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Total de ingresos usado como control original' });
       return;
     }
 
     if (isExpenseTotalRow(concept)) {
       captureControlTotals(controlTotalsByPeriod, row, header.monthIndexes, 'expense');
       excludedRows += 1;
-      excludedSamples.push({ row: sourceRow, concept, reason: 'Total de salidas usado como control' });
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Total de salidas usado como control original' });
       return;
     }
 
     if (isNetControlRow(concept)) {
       captureControlTotals(controlTotalsByPeriod, row, header.monthIndexes, 'net');
       excludedRows += 1;
-      excludedSamples.push({ row: sourceRow, concept, reason: 'Neto de control, no movimiento' });
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Neto original de control, no movimiento' });
       return;
     }
 
@@ -422,10 +464,15 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       return;
     }
 
-    if (!isIndentedConceptRow(row, firstMonthIndex) && hasIndentedDetailAfter(rows, absoluteRowIndex, firstMonthIndex)) {
+    const isGroupedRow =
+      !isIndentedConceptRow(row, firstMonthIndex) &&
+      (hasIndentedDetailAfter(rows, absoluteRowIndex, firstMonthIndex) ||
+        isSubtotalOfFollowingRows(rows, absoluteRowIndex, firstMonthIndex, header.monthIndexes));
+
+    if (isGroupedRow) {
       excludedRows += 1;
       groupedRows += 1;
-      excludedSamples.push({ row: sourceRow, concept, reason: 'Fila agrupadora excluida para evitar doble conteo' });
+      excludedSamples.push({ row: sourceRow, concept, reason: 'Fila agrupadora/subtotal excluida para evitar doble conteo' });
       return;
     }
 
@@ -463,6 +510,19 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
     summaryByPeriod.set(record.period, current);
   }
 
+  for (const { period } of header.monthIndexes) {
+    const controls = controlTotalsByPeriod.get(period);
+    if (!controls) continue;
+
+    const current = summaryByPeriod.get(period) ?? { period, records: 0, income: 0, expense: 0, net: 0 };
+
+    if (controls.income !== undefined) current.income = controls.income;
+    if (controls.expense !== undefined) current.expense = controls.expense;
+    current.net = controls.net !== undefined ? controls.net : roundMoney(current.income - current.expense);
+
+    summaryByPeriod.set(period, current);
+  }
+
   for (const [period, controls] of controlTotalsByPeriod) {
     const summary = summaryByPeriod.get(period);
     if (!summary) continue;
@@ -473,8 +533,8 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       if (Math.abs(difference) > MONEY_TOLERANCE) {
         addIssue(issues, {
           group: 'validacion',
-          title: 'Ingresos no coinciden con el total informado',
-          detail: `${period}: la suma de ingresos da ${summary.income}, pero el total informado es ${controls.income}. Diferencia ${difference}.`,
+          title: 'Ingresos no coinciden con el total original',
+          detail: `${period}: la lectura da ${summary.income}, pero el total original es ${controls.income}. Diferencia ${difference}.`,
           count: 1,
         });
       }
@@ -486,8 +546,8 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       if (Math.abs(difference) > MONEY_TOLERANCE) {
         addIssue(issues, {
           group: 'validacion',
-          title: 'Salidas no coinciden con el total informado',
-          detail: `${period}: la suma de salidas da ${summary.expense}, pero el total informado es ${controls.expense}. Diferencia ${difference}.`,
+          title: 'Salidas no coinciden con el total original',
+          detail: `${period}: la lectura da ${summary.expense}, pero el total original es ${controls.expense}. Diferencia ${difference}.`,
           count: 1,
         });
       }
@@ -499,8 +559,8 @@ export function normalizeGenericWideCashFlow(sourceSheet: string, rows: GenericC
       if (Math.abs(difference) > MONEY_TOLERANCE) {
         addIssue(issues, {
           group: 'validacion',
-          title: 'Neto no coincide con el total informado',
-          detail: `${period}: ingresos menos salidas da ${summary.net}, pero el neto informado es ${controls.net}. Diferencia ${difference}.`,
+          title: 'Neto no coincide con el neto original',
+          detail: `${period}: ingresos menos salidas da ${summary.net}, pero el neto original es ${controls.net}. Diferencia ${difference}.`,
           count: 1,
         });
       }
