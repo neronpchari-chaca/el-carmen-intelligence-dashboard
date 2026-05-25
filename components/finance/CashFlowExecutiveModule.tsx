@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, BrainCircuit, Landmark, LineChart as LineChartIcon, WalletCards } from 'lucide-react';
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -21,6 +22,49 @@ const moneyFormatter = new Intl.NumberFormat('es-AR', {
 });
 
 const formatMoney = (value: number) => moneyFormatter.format(value);
+
+const formatMoneyTick = (value: number) => {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${Math.round(value / 1_000_000)}M`;
+  if (abs >= 1_000) return `${Math.round(value / 1_000)}k`;
+  return `${Math.round(value)}`;
+};
+
+const chartTooltipLabels: Record<string, { label: string; color: string }> = {
+  ingresos: { label: 'Ingresos', color: '#63B58E' },
+  egresos: { label: 'Egresos', color: '#E97373' },
+  cajaAcumulada: { label: 'Disponible / necesidad', color: '#8BB8FF' },
+};
+
+function CashFlowTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey?: string; value?: number }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+
+  const visibleItems = payload.filter((item) => typeof item.value === 'number');
+
+  return (
+    <div className="min-w-[190px] rounded-xl border border-emerald-500/20 bg-[#07110D]/95 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-md">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-zinc-400">{label}</p>
+      <div className="space-y-1.5">
+        {visibleItems.map((item) => {
+          const key = String(item.dataKey ?? '');
+          const meta = chartTooltipLabels[key] ?? { label: key, color: '#cbd5e1' };
+          const value = item.value ?? 0;
+          const valueTone = key === 'cajaAcumulada' && value < 0 ? 'text-rose-300' : 'text-zinc-100';
+
+          return (
+            <div key={key} className="flex items-center justify-between gap-4 text-sm">
+              <span className="inline-flex items-center gap-2 text-zinc-300">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+                {meta.label}
+              </span>
+              <span className={`font-medium ${valueTone}`}>{formatMoney(value)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function buildCashEvolution(snapshot: PublishedCashFlowSnapshot) {
   const balanceByPeriod = new Map((snapshot.balanceSummary ?? []).map((row) => [row.period, row.closingBalance]));
@@ -223,12 +267,13 @@ export function CashFlowExecutiveModule() {
         <article className="glass h-80 rounded-2xl p-5 shadow-premium">
           <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Evolucion mensual de caja acumulada</h3>
           <ResponsiveContainer width="100%" height="88%">
-            <LineChart data={model.evolution}>
-              <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
-              <XAxis dataKey="periodo" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip />
-              <Line type="monotone" dataKey="cajaAcumulada" name="Caja acumulada" stroke="#63B58E" strokeWidth={2.8} dot={false} />
+            <LineChart data={model.evolution} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" vertical={false} />
+              <XAxis dataKey="periodo" stroke="#94a3b8" tickLine={false} axisLine={{ stroke: '#334155' }} />
+              <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} tickFormatter={formatMoneyTick} width={54} />
+              <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />
+              <Tooltip content={<CashFlowTooltip />} cursor={{ stroke: 'rgba(139, 184, 255, 0.35)', strokeWidth: 1 }} wrapperStyle={{ outline: 'none' }} />
+              <Line type="monotone" dataKey="cajaAcumulada" name="Disponible / necesidad" stroke="#8BB8FF" strokeWidth={3} dot={{ r: 3, fill: '#07110D', stroke: '#8BB8FF', strokeWidth: 2 }} activeDot={{ r: 5, fill: '#8BB8FF', stroke: '#07110D', strokeWidth: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </article>
@@ -236,14 +281,17 @@ export function CashFlowExecutiveModule() {
         <article className="glass h-80 rounded-2xl p-5 shadow-premium">
           <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-300">Ingresos vs egresos mensuales</h3>
           <ResponsiveContainer width="100%" height="88%">
-            <BarChart data={model.evolution}>
-              <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" />
-              <XAxis dataKey="periodo" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip />
-              <Bar dataKey="ingresos" name="Ingresos" fill="#63B58E" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="egresos" name="Egresos" fill="#E97373" radius={[6, 6, 0, 0]} />
-            </BarChart>
+            <ComposedChart data={model.evolution} margin={{ top: 8, right: 0, left: 0, bottom: 0 }} barCategoryGap="28%">
+              <CartesianGrid stroke="#1F2B26" strokeDasharray="4 4" vertical={false} />
+              <XAxis dataKey="periodo" stroke="#94a3b8" tickLine={false} axisLine={{ stroke: '#334155' }} />
+              <YAxis yAxisId="bars" stroke="#94a3b8" tickLine={false} axisLine={false} tickFormatter={formatMoneyTick} width={54} />
+              <YAxis yAxisId="cash" orientation="right" stroke="#8BB8FF" tickLine={false} axisLine={false} tickFormatter={formatMoneyTick} width={42} />
+              <ReferenceLine yAxisId="cash" y={0} stroke="#64748b" strokeDasharray="3 3" />
+              <Tooltip content={<CashFlowTooltip />} cursor={{ fill: 'rgba(139, 184, 255, 0.08)' }} wrapperStyle={{ outline: 'none' }} />
+              <Bar yAxisId="bars" dataKey="ingresos" name="Ingresos" fill="#63B58E" radius={[5, 5, 0, 0]} maxBarSize={18} />
+              <Bar yAxisId="bars" dataKey="egresos" name="Egresos" fill="#E97373" radius={[5, 5, 0, 0]} maxBarSize={18} />
+              <Line yAxisId="cash" type="monotone" dataKey="cajaAcumulada" name="Disponible / necesidad" stroke="#8BB8FF" strokeWidth={2.7} dot={false} activeDot={{ r: 5, fill: '#8BB8FF', stroke: '#07110D', strokeWidth: 2 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </article>
       </section>
