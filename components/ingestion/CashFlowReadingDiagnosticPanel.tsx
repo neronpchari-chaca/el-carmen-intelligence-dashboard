@@ -1,4 +1,5 @@
 import type { GenericCashFlowNormalizeResult } from '@/lib/parsers/genericWideCashFlow';
+import { buildCashFlowReadingIntelligence } from '@/lib/ingestion/cashFlowReadingIntelligence';
 
 type CashFlowReadingDiagnosticPanelProps = {
   result: GenericCashFlowNormalizeResult;
@@ -10,8 +11,15 @@ const confidenceStyles = {
   baja: 'border-rose-500/30 bg-rose-500/10 text-rose-200',
 };
 
+const decisionStyles = {
+  Publicable: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+  'Revisar antes de publicar': 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+  'No publicar': 'border-rose-500/30 bg-rose-500/10 text-rose-200',
+};
+
 export function CashFlowReadingDiagnosticPanel({ result }: CashFlowReadingDiagnosticPanelProps) {
   const diagnostic = result.readingDiagnostic;
+  const intelligence = buildCashFlowReadingIntelligence(result);
 
   return (
     <article className="glass rounded-2xl p-5 shadow-premium">
@@ -25,6 +33,43 @@ export function CashFlowReadingDiagnosticPanel({ result }: CashFlowReadingDiagno
           Confianza {diagnostic.confidence} · {diagnostic.confidenceScore}/100
         </span>
       </div>
+
+      <section className="mt-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-cyan-300/75">IA de lectura</p>
+            <h3 className="mt-1 text-lg font-semibold text-white">{intelligence.format}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-300">{intelligence.summary}</p>
+          </div>
+          <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${decisionStyles[intelligence.decision]}`}>
+            {intelligence.decision}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 p-4">
+            <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Recomendacion</p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-300">{intelligence.recommendation}</p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 p-4">
+            <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Proximas acciones</p>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+              {intelligence.actions.map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/45 p-4">
+          <p className="text-xs uppercase tracking-[0.15em] text-zinc-500">Evidencia usada</p>
+          <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+            {intelligence.evidence.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
       <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
